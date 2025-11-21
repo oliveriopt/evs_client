@@ -1,0 +1,3 @@
+"Failed to start the VM, launcher-202511210818242704836515094158340, used for launching because of status code: INVALID_ARGUMENT, reason: Invalid Error:
+ Message: Invalid value for field 'resource.networkInterfaces[0].network': 'global/networks/default'. The referenced network resource cannot be found.
+ HTTP Code: 400."
