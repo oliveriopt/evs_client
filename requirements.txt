@@ -1,7 +1,8 @@
-apache-beam[gcp]==2.64.0
+# NO meter apache-beam aquí; ya viene en la imagen base
 pyodbc
+google-cloud-secret-manager
+google-cloud-bigquery
 pandas
 pyarrow
 fsspec
 gcsfs
-google-cloud-secret-manager
