@@ -1,26 +1,31 @@
-FROM gcr.io/dataflow-templates-base/python3-template-launcher-base
+# Imagen base oficial para Flex Templates Python 3.9
+FROM gcr.io/dataflow-templates-base/python39-template-launcher-base
 
-# Install required OS packages
+# Paquetes de sistema básicos (ODBC libs para pyodbc en el launcher)
 RUN apt-get update && apt-get install -y \
+    unixodbc \
     unixodbc-dev \
-    gcc \
-    g++ \
     curl \
     gnupg2 \
+    apt-transport-https \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Microsoft ODBC Driver 17 for SQL Server
+# (Opcional) Instalar driver ODBC 17 en el launcher.
+# Ojo: esto SOLO aplica al contenedor del launcher, no a los workers.
 RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
-    curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list && \
-    apt-get update && ACCEPT_EULA=Y apt-get install -y msodbcsql17 \
-    && rm -rf /var/lib/apt/lists/*
+    curl https://packages.microsoft.com/config/debian/10/prod.list \
+        > /etc/apt/sources.list.d/mssql-release.list && \
+    apt-get update && \
+    ACCEPT_EULA=Y apt-get install -y msodbcsql17 && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copiamos requirements y main a una carpeta fija
+COPY requirements.txt /template/requirements.txt
+COPY main.py         /template/main.py
 
-# Copy Beam script
-COPY main.py .
+# Instalar deps de Python SOLO en el launcher
+RUN pip install --no-cache-dir -r /template/requirements.txt
 
-# Set the environment variable for the Dataflow Flex Template launcher
-ENV FLEX_TEMPLATE_PYTHON_PY_FILE="/main.py"
+# Variables especiales para Flex Template (ojo con las rutas)
+ENV FLEX_TEMPLATE_PYTHON_PY_FILE="/template/main.py"
+ENV FLEX_TEMPLATE_PYTHON_REQUIREMENTS_FILE="/template/requirements.txt"
