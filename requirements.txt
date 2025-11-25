@@ -1,0 +1,7 @@
+apache-beam[gcp]==2.64.0
+pyodbc
+pandas
+pyarrow
+fsspec
+gcsfs
+google-cloud-secret-manager
