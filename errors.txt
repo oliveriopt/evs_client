@@ -1,3 +1,61 @@
-"Failed to start the VM, launcher-202511210818242704836515094158340, used for launching because of status code: INVALID_ARGUMENT, reason: Invalid Error:
- Message: Invalid value for field 'resource.networkInterfaces[0].network': 'global/networks/default'. The referenced network resource cannot be found.
- HTTP Code: 400."
+INFO 2025-11-25T13:22:09.259769Z parts = [f"DRIVER={{{{{}}}}};SERVER={server},1433;".format(driver)]
+  {
+    "insertId": "5681280526301270548:916490:0:7179",
+    "jsonPayload": {
+      "message": "    parts = [f\"DRIVER={{{{{}}}}};SERVER={server},1433;\".format(driver)]",
+      "line": "exec.go:66"
+    },
+    "resource": {
+      "type": "dataflow_step",
+      "labels": {
+        "job_id": "2025-11-25_05_19_54-5761040864451135820",
+        "step_id": "",
+        "region": "us-central1",
+        "job_name": "sql-to-bq-20251125-131953",
+        "project_id": "rxo-dataeng-datalake-np"
+      }
+    },
+    "timestamp": "2025-11-25T13:22:09.259769Z",
+    "severity": "INFO",
+    "labels": {
+      "compute.googleapis.com/resource_name": "launcher-202511250519545761040864451135820",
+      "compute.googleapis.com/resource_id": "5681280526301270548",
+      "compute.googleapis.com/resource_type": "instance",
+      "dataflow.googleapis.com/job_name": "sql-to-bq-20251125-131953",
+      "dataflow.googleapis.com/region": "us-central1",
+      "dataflow.googleapis.com/job_id": "2025-11-25_05_19_54-5761040864451135820"
+    },
+    "logName": "projects/rxo-dataeng-datalake-np/logs/dataflow.googleapis.com%2Flauncher",
+    "receiveTimestamp": "2025-11-25T13:22:18.780537178Z"
+  }
+INFO 2025-11-25T13:22:09.259849Z ^
+INFO 2025-11-25T13:22:09.259900Z SyntaxError: f-string: empty expression not allowed
+  {
+    "insertId": "5681280526301270548:916490:0:7464",
+    "jsonPayload": {
+      "message": "SyntaxError: f-string: empty expression not allowed",
+      "line": "exec.go:66"
+    },
+    "resource": {
+      "type": "dataflow_step",
+      "labels": {
+        "job_id": "2025-11-25_05_19_54-5761040864451135820",
+        "region": "us-central1",
+        "step_id": "",
+        "job_name": "sql-to-bq-20251125-131953",
+        "project_id": "rxo-dataeng-datalake-np"
+      }
+    },
+    "timestamp": "2025-11-25T13:22:09.259900Z",
+    "severity": "INFO",
+    "labels": {
+      "dataflow.googleapis.com/region": "us-central1",
+      "compute.googleapis.com/resource_id": "5681280526301270548",
+      "dataflow.googleapis.com/job_name": "sql-to-bq-20251125-131953",
+      "dataflow.googleapis.com/job_id": "2025-11-25_05_19_54-5761040864451135820",
+      "compute.googleapis.com/resource_name": "launcher-202511250519545761040864451135820",
+      "compute.googleapis.com/resource_type": "instance"
+    },
+    "logName": "projects/rxo-dataeng-datalake-np/logs/dataflow.googleapis.com%2Flauncher",
+    "receiveTimestamp": "2025-11-25T13:22:18.780537178Z"
+  }
