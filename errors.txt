@@ -1,61 +1,17 @@
-INFO 2025-11-25T13:22:09.259769Z parts = [f"DRIVER={{{{{}}}}};SERVER={server},1433;".format(driver)]
-  {
-    "insertId": "5681280526301270548:916490:0:7179",
-    "jsonPayload": {
-      "message": "    parts = [f\"DRIVER={{{{{}}}}};SERVER={server},1433;\".format(driver)]",
-      "line": "exec.go:66"
-    },
-    "resource": {
-      "type": "dataflow_step",
-      "labels": {
-        "job_id": "2025-11-25_05_19_54-5761040864451135820",
-        "step_id": "",
-        "region": "us-central1",
-        "job_name": "sql-to-bq-20251125-131953",
-        "project_id": "rxo-dataeng-datalake-np"
-      }
-    },
-    "timestamp": "2025-11-25T13:22:09.259769Z",
-    "severity": "INFO",
-    "labels": {
-      "compute.googleapis.com/resource_name": "launcher-202511250519545761040864451135820",
-      "compute.googleapis.com/resource_id": "5681280526301270548",
-      "compute.googleapis.com/resource_type": "instance",
-      "dataflow.googleapis.com/job_name": "sql-to-bq-20251125-131953",
-      "dataflow.googleapis.com/region": "us-central1",
-      "dataflow.googleapis.com/job_id": "2025-11-25_05_19_54-5761040864451135820"
-    },
-    "logName": "projects/rxo-dataeng-datalake-np/logs/dataflow.googleapis.com%2Flauncher",
-    "receiveTimestamp": "2025-11-25T13:22:18.780537178Z"
-  }
-INFO 2025-11-25T13:22:09.259849Z ^
-INFO 2025-11-25T13:22:09.259900Z SyntaxError: f-string: empty expression not allowed
-  {
-    "insertId": "5681280526301270548:916490:0:7464",
-    "jsonPayload": {
-      "message": "SyntaxError: f-string: empty expression not allowed",
-      "line": "exec.go:66"
-    },
-    "resource": {
-      "type": "dataflow_step",
-      "labels": {
-        "job_id": "2025-11-25_05_19_54-5761040864451135820",
-        "region": "us-central1",
-        "step_id": "",
-        "job_name": "sql-to-bq-20251125-131953",
-        "project_id": "rxo-dataeng-datalake-np"
-      }
-    },
-    "timestamp": "2025-11-25T13:22:09.259900Z",
-    "severity": "INFO",
-    "labels": {
-      "dataflow.googleapis.com/region": "us-central1",
-      "compute.googleapis.com/resource_id": "5681280526301270548",
-      "dataflow.googleapis.com/job_name": "sql-to-bq-20251125-131953",
-      "dataflow.googleapis.com/job_id": "2025-11-25_05_19_54-5761040864451135820",
-      "compute.googleapis.com/resource_name": "launcher-202511250519545761040864451135820",
-      "compute.googleapis.com/resource_type": "instance"
-    },
-    "logName": "projects/rxo-dataeng-datalake-np/logs/dataflow.googleapis.com%2Flauncher",
-    "receiveTimestamp": "2025-11-25T13:22:18.780537178Z"
-  }
+2025-11-25 11:04:37.782 CLST
+__main__.LoadMainSessionException: Could not load main session. Inspect which external dependencies are used in the main module of your pipeline. Verify that corresponding packages are installed in the pipeline runtime environment and their installed versions match the versions used in pipeline submission environment. For more information, see: https://beam.apache.org/documentation/sdks/python-pipeline-dependencies/ Traceback (most recent call last):
+  File "/usr/local/lib/python3.9/site-packages/apache_beam/runners/worker/sdk_worker_main.py", line 115, in create_harness
+    _load_main_session(semi_persistent_directory)
+  File "/usr/local/lib/python3.9/site-packages/apache_beam/runners/worker/sdk_worker_main.py", line 354, in _load_main_session
+    pickler.load_session(session_file)
+  File "/usr/local/lib/python3.9/site-packages/apache_beam/internal/pickler.py", line 64, in load_session
+    return desired_pickle_lib.load_session(file_path)
+  File "/usr/local/lib/python3.9/site-packages/apache_beam/internal/dill_pickler.py", line 450, in load_session
+    return dill.load_session(file_path)
+  File "/usr/local/lib/python3.9/site-packages/dill/_dill.py", line 368, in load_session
+    module = unpickler.load()
+  File "/usr/local/lib/python3.9/site-packages/dill/_dill.py", line 472, in load
+    obj = StockUnpickler.load(self)
+  File "/usr/local/lib/python3.9/site-packages/dill/_dill.py", line 826, in _import_module
+    return __import__(import_name)
+ModuleNotFoundError: No module named 'pyodbc'
