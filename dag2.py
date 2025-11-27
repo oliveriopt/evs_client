@@ -65,16 +65,15 @@ def extract_and_process_metadata(**context):
     context["ti"].xcom_push(key="metadata_rows", value=rows_dicts)
 
 
-# === TASK 2: Ejecutar dos queries en SQL Server (PKs + rowcounts) y hacer join ===
+# === TASK 2: Ejecutar en SQL Server en batches y hacer join (PK + rowcount) ===
 def build_and_run_sqlserver_query(**context):
     """
     1) Pulls metadata from XCom.
-    2) Construye dinámicamente el VALUES(...) de todo_raw
-       a partir de (database_name, schema_name, table_name).
-    3) Ejecuta:
-       - Query PK: [Database, Schema, Table, column_id, is_pk].
-       - Query ROWCOUNT: [Database, Schema, Table, total_rows].
-    4) Hace un merge en Pandas y muestra el resultado combinado.
+    2) Deduplica (database_name, schema_name, table_name) y lo procesa en batches de 10.
+    3) Para cada batch:
+       - Ejecuta Query PK: [Database, Schema, Table, column_id, is_pk].
+       - Ejecuta Query ROWCOUNT: [Database, Schema, Table, total_rows].
+    4) Concatena resultados de todos los batches y hace merge en Pandas.
     """
 
     ti = context["ti"]
@@ -98,31 +97,61 @@ def build_and_run_sqlserver_query(**context):
         print("No valid rows with non-null database/schema/table. Nothing to do.")
         return
 
-    # Construimos VALUES (...) para todo_raw en base al DataFrame
-    values_rows = []
-    for _, row in df_meta.iterrows():
-        db  = str(row["database_name"]).strip()
-        sch = str(row["schema_name"]).strip()
-        tbl = str(row["table_name"]).strip()
+    # Nos quedamos con combinaciones únicas (Database, Schema, Table)
+    df_unique = (
+        df_meta[["database_name", "schema_name", "table_name"]]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
 
-        # Escapar comillas simples para T-SQL Unicode N'...'
-        db_escaped  = db.replace("'", "''")
-        sch_escaped = sch.replace("'", "''")
-        tbl_escaped = tbl.replace("'", "''")
+    print(f"Unique triplets (db, schema, table): {len(df_unique)}")
 
-        values_rows.append(
-            f"(N'{db_escaped}', N'{sch_escaped}', N'{tbl_escaped}')"
+    batch_size = 10
+
+    # Acumuladores globales
+    pk_dfs = []
+    cnt_dfs = []
+
+    # Conexión única a SQL Server
+    conn = None
+    try:
+        conn = pymssql.connect(
+            server="fbtdw2090.qaamer.qacorp.xpo.com",
+            user="svcGCPDataEngg",
+            password="OXZ6q67wr77k",
+            database="XpoMaster",  # DB inicial; las queries usan [DatabaseName].sys.*
         )
+        cursor = conn.cursor()
 
-    if not values_rows:
-        print("No rows to build VALUES clause from metadata.")
-        return
+        # Procesar en batches
+        for start in range(0, len(df_unique), batch_size):
+            df_batch = df_unique.iloc[start:start + batch_size].copy()
+            print(f"Processing batch rows {start} to {start + len(df_batch) - 1}")
 
-    values_clause = ",\n        ".join(values_rows)
+            # Construimos VALUES(...) para este batch
+            values_rows = []
+            for _, row in df_batch.iterrows():
+                db  = str(row["database_name"]).strip()
+                sch = str(row["schema_name"]).strip()
+                tbl = str(row["table_name"]).strip()
 
-    # === Query 1: PK catalog (Database, Schema, Table, column_id, is_pk) ===
-    pk_tsql = f"""
-/* === 1) Lista objetivo (Database, Schema, Table) desde BigQuery === */
+                db_escaped  = db.replace("'", "''")
+                sch_escaped = sch.replace("'", "''")
+                tbl_escaped = tbl.replace("'", "''")
+
+                values_rows.append(
+                    f"(N'{db_escaped}', N'{sch_escaped}', N'{tbl_escaped}')"
+                )
+
+            if not values_rows:
+                print("No rows in this batch, skipping.")
+                continue
+
+            values_clause = ",\n        ".join(values_rows)
+
+            # === Query 1 para el batch: PK catalog ===
+            pk_tsql = f"""
+/* === Batch PK: Lista objetivo (Database, Schema, Table) === */
 WITH todo_raw (DatabaseName, SchemaName, TableName) AS (
     SELECT *
     FROM (VALUES
@@ -139,7 +168,7 @@ FROM todo_raw;
 DECLARE @sql NVARCHAR(MAX) = N'';
 
 SELECT
-    @sql = STRING_AGG(BlockSql, CHAR(10) + 'UNION ALL' + CHAR(10))
+    @sql = STRING_AGG(CAST(BlockSql AS NVARCHAR(MAX)), CHAR(10) + 'UNION ALL' + CHAR(10))
 FROM (
     SELECT
         d.DatabaseName,
@@ -196,7 +225,8 @@ FROM pick'
 
 IF @sql IS NULL OR LEN(@sql) = 0
 BEGIN
-    RAISERROR('No databases found in #todo for PK query.', 16, 1);
+    DROP TABLE #todo;
+    RAISERROR('No databases found in #todo for PK query (batch).', 16, 1);
     RETURN;
 END;
 
@@ -207,9 +237,9 @@ EXEC sys.sp_executesql @sql;
 DROP TABLE #todo;
 """
 
-    # === Query 2: Rowcount por tabla (Database, Schema, Table, total_rows) ===
-    counts_tsql = f"""
-/* === 1) Lista objetivo (Database, Schema, Table) desde BigQuery === */
+            # === Query 2 para el batch: Rowcount por tabla ===
+            counts_tsql = f"""
+/* === Batch COUNTS: Lista objetivo (Database, Schema, Table) === */
 WITH todo_raw (DatabaseName, SchemaName, TableName) AS (
     SELECT *
     FROM (VALUES
@@ -226,7 +256,7 @@ FROM todo_raw;
 DECLARE @sql2 NVARCHAR(MAX) = N'';
 
 SELECT
-    @sql2 = STRING_AGG(BlockSql, CHAR(10) + 'UNION ALL' + CHAR(10))
+    @sql2 = STRING_AGG(CAST(BlockSql AS NVARCHAR(MAX)), CHAR(10) + 'UNION ALL' + CHAR(10))
 FROM (
     SELECT
         d.DatabaseName,
@@ -253,7 +283,8 @@ GROUP BY s.name, t.name'
 
 IF @sql2 IS NULL OR LEN(@sql2) = 0
 BEGIN
-    RAISERROR('No databases found in #todo for rowcount query.', 16, 1);
+    DROP TABLE #todo;
+    RAISERROR('No databases found in #todo for rowcount query (batch).', 16, 1);
     RETURN;
 END;
 
@@ -264,65 +295,66 @@ EXEC sys.sp_executesql @sql2;
 DROP TABLE #todo;
 """
 
-    print("PK T-SQL to be executed on SQL Server:")
-    print(pk_tsql)
-    print("COUNTS T-SQL to be executed on SQL Server:")
-    print(counts_tsql)
+            # Ejecutar PK para el batch
+            print("Executing PK batch T-SQL:")
+            print(pk_tsql)
+            cursor.execute(pk_tsql)
+            try:
+                rows_pk = cursor.fetchall()
+                if rows_pk:
+                    cols_pk = [col[0] for col in cursor.description]
+                    df_pk_batch = pd.DataFrame.from_records(rows_pk, columns=cols_pk)
+                    pk_dfs.append(df_pk_batch)
+                    print(f"PK rows in this batch: {len(df_pk_batch)}")
+                else:
+                    print("PK query (batch) returned no rows.")
+            except pymssql.ProgrammingError:
+                print("PK query (batch) did not return a resultset.")
 
-    # 4) Ejecutar en SQL Server con pymssql
-    conn = None
-    try:
-        conn = pymssql.connect(
-            server="fbtdw2090.qaamer.qacorp.xpo.com",
-            user="svcGCPDataEngg",
-            password="OXZ6q67wr77k",
-            database="XpoMaster",  # DB inicial; las queries usan [DatabaseName].sys.*
-        )
-        cursor = conn.cursor()
+            # Ejecutar COUNTS para el batch
+            print("Executing COUNTS batch T-SQL:")
+            print(counts_tsql)
+            cursor.execute(counts_tsql)
+            try:
+                rows_cnt = cursor.fetchall()
+                if rows_cnt:
+                    cols_cnt = [col[0] for col in cursor.description]
+                    df_cnt_batch = pd.DataFrame.from_records(rows_cnt, columns=cols_cnt)
+                    cnt_dfs.append(df_cnt_batch)
+                    print(f"Rowcount rows in this batch: {len(df_cnt_batch)}")
+                else:
+                    print("Rowcount query (batch) returned no rows.")
+            except pymssql.ProgrammingError:
+                print("Rowcount query (batch) did not return a resultset.")
 
-        # --- Query 1: PKs ---
-        cursor.execute(pk_tsql)
-        try:
-            rows_pk = cursor.fetchall()
-            if rows_pk:
-                cols_pk = [col[0] for col in cursor.description]
-                df_pk = pd.DataFrame.from_records(rows_pk, columns=cols_pk)
-                print("PK catalog result:")
-                print(df_pk.head())
-                print(f"Total PK rows: {len(df_pk)}")
-            else:
-                print("PK query returned no rows.")
-                df_pk = pd.DataFrame(columns=["Database", "Schema", "Table", "column_id", "is_pk"])
-        except pymssql.ProgrammingError:
-            print("PK query did not return a resultset.")
-            df_pk = pd.DataFrame(columns=["Database", "Schema", "Table", "column_id", "is_pk"])
+        # Una vez recorridos todos los batches, concatenamos
+        if pk_dfs:
+            df_pk_all = pd.concat(pk_dfs, ignore_index=True)
+        else:
+            df_pk_all = pd.DataFrame(columns=["Database", "Schema", "Table", "column_id", "is_pk"])
 
-        # --- Query 2: Rowcounts ---
-        cursor.execute(counts_tsql)
-        try:
-            rows_cnt = cursor.fetchall()
-            if rows_cnt:
-                cols_cnt = [col[0] for col in cursor.description]
-                df_cnt = pd.DataFrame.from_records(rows_cnt, columns=cols_cnt)
-                print("Rowcount result:")
-                print(df_cnt.head())
-                print(f"Total rowcount rows: {len(df_cnt)}")
-            else:
-                print("Rowcount query returned no rows.")
-                df_cnt = pd.DataFrame(columns=["Database", "Schema", "Table", "total_rows"])
-        except pymssql.ProgrammingError:
-            print("Rowcount query did not return a resultset.")
-            df_cnt = pd.DataFrame(columns=["Database", "Schema", "Table", "total_rows"])
+        if cnt_dfs:
+            df_cnt_all = pd.concat(cnt_dfs, ignore_index=True)
+        else:
+            df_cnt_all = pd.DataFrame(columns=["Database", "Schema", "Table", "total_rows"])
 
-        # --- Join en Pandas: PK + total_rows ---
-        if not df_pk.empty and not df_cnt.empty:
-            df_final = df_pk.merge(
-                df_cnt,
+        print("Global PK DF:")
+        print(df_pk_all.head())
+        print(f"Global PK rows: {len(df_pk_all)}")
+
+        print("Global COUNTS DF:")
+        print(df_cnt_all.head())
+        print(f"Global rowcount rows: {len(df_cnt_all)}")
+
+        # Join final PK + total_rows
+        if not df_pk_all.empty and not df_cnt_all.empty:
+            df_final = df_pk_all.merge(
+                df_cnt_all,
                 on=["Database", "Schema", "Table"],
                 how="left",
             )
         else:
-            df_final = df_pk.copy()
+            df_final = df_pk_all.copy()
             if "total_rows" not in df_final.columns:
                 df_final["total_rows"] = pd.NA
 
@@ -330,7 +362,7 @@ DROP TABLE #todo;
         print(df_final.head())
         print(f"Total merged rows: {len(df_final)}")
 
-        # Si quieres, puedes empujar este df_final a XCom:
+        # Opcional: XCom
         # ti.xcom_push(key="pk_with_rowcounts", value=df_final.to_dict(orient="records"))
 
     finally:
@@ -340,11 +372,11 @@ DROP TABLE #todo;
 
 # === Definición del DAG ===
 with DAG(
-    dag_id="bq_to_sqlserver_pk_catalog_pymssql_two_queries_with_join_v2",
+    dag_id="bq_to_sqlserver_pk_catalog_pymssql_batches_v1",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
     schedule=None,
-    tags=["bigquery", "metadata", "sqlserver", "pk_catalog", "rowcount", "dynamic"],
+    tags=["bigquery", "metadata", "sqlserver", "pk_catalog", "rowcount", "dynamic", "batches"],
 ) as dag:
 
     extract_metadata_task = PythonOperator(
@@ -354,7 +386,7 @@ with DAG(
     )
 
     run_sqlserver_pk_task = PythonOperator(
-        task_id="build_and_run_sqlserver_pk_query_dynamic",
+        task_id="build_and_run_sqlserver_pk_query_dynamic_batches",
         python_callable=build_and_run_sqlserver_query,
         provide_context=True,
     )
