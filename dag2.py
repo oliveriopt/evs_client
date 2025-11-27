@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pendulum
 import pandas as pd
-import pyodbc
+import pymssql
 
 from airflow.models.dag import DAG
 from airflow.operators.python import PythonOperator
@@ -66,12 +66,12 @@ def extract_and_process_metadata(**context):
     context["ti"].xcom_push(key="metadata_rows", value=rows_dicts)
 
 
-# === TASK 2: Construir query tipo query1 desde el DataFrame y ejecutarla en SQL Server ===
+# === TASK 2: Construir query tipo query1 desde el DataFrame y ejecutarla en SQL Server (pymssql) ===
 def build_and_run_sqlserver_query(**context):
     """
     Pulls metadata from XCom, builds a T-SQL query (based on query1)
     using database_name, schema_name, table_name from BigQuery,
-    executes it on SQL Server, and loads the result into a DataFrame.
+    executes it on SQL Server using pymssql, and loads the result into a DataFrame.
     """
 
     ti = context["ti"]
@@ -161,21 +161,20 @@ SELECT * FROM pk_catalog;
     print("Final T-SQL to be executed on SQL Server:")
     print(final_tsql)
 
-    # 4) Ejecutar en SQL Server y cargar a DataFrame
-    conn_str = (
-        "DRIVER={ODBC Driver 17 for SQL Server};"
-        "SERVER=fbtdw2090.qaamer.qacorp.xpo.com;"
-        "DATABASE=master;"  # DB inicial neutra; la query usa [db].sys.XXX
-        "UID=svcGCPDataEngg;"
-        "PWD=OXZ6q67wr77k"
-    )
-
+    # 4) Ejecutar en SQL Server con pymssql y cargar a DataFrame
     conn = None
     try:
-        conn = pyodbc.connect(conn_str)
+        conn = pymssql.connect(
+            server="fbtdw2090.qaamer.qacorp.xpo.com",
+            user="svcGCPDataEngg",
+            password="OXZ6q67wr77k",
+            database="XpoMaster",  # DB inicial; la query usa [db].sys.xxx para cada base
+        )
         cursor = conn.cursor()
         cursor.execute(final_tsql)
         rows = cursor.fetchall()
+
+        # columnas desde cursor.description
         columns = [col[0] for col in cursor.description]
         df_pk = pd.DataFrame.from_records(rows, columns=columns)
 
@@ -191,21 +190,21 @@ SELECT * FROM pk_catalog;
             conn.close()
 
 
-# === DAG definition ===
+# === Definición del DAG ===
 with DAG(
-    dag_id="bq_to_sqlserver_pk_catalog_v1",
+    dag_id="bq_to_sqlserver_pk_catalog_pymssql_v1",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
     schedule=None,  # solo manual
     tags=["bigquery", "metadata", "sqlserver", "pk_catalog"],
     doc_md="""
-    ### DAG: BigQuery metadata → dynamic PK catalog in SQL Server
+    ### DAG: BigQuery metadata → dynamic PK catalog in SQL Server (pymssql)
 
     1) Extracts `database_name`, `schema_name`, `table_name` from
        `dataops_admin.extraction_metadata` in BigQuery.
     2) Builds a dynamic T-SQL query (based on the original query1)
        using that metadata to inspect PKs across all listed databases.
-    3) Executes the query on SQL Server via pyodbc.
+    3) Executes the query on SQL Server via `pymssql`.
     4) Loads the result into a Pandas DataFrame (printed in logs).
     """,
 ) as dag:
