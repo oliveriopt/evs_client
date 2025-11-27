@@ -72,8 +72,8 @@ def build_and_run_sqlserver_query(**context):
     2) Construye dinámicamente el VALUES(...) de todo_raw
        a partir de (database_name, schema_name, table_name).
     3) Ejecuta:
-       - Query PK: devuelve [Database, Schema, Table, column_id, is_pk].
-       - Query ROWCOUNT: devuelve [Database, Schema, Table, total_rows].
+       - Query PK: [Database, Schema, Table, column_id, is_pk].
+       - Query ROWCOUNT: [Database, Schema, Table, total_rows].
     4) Hace un merge en Pandas y muestra el resultado combinado.
     """
 
@@ -129,22 +129,12 @@ WITH todo_raw (DatabaseName, SchemaName, TableName) AS (
         {values_clause}
     ) v(DatabaseName, SchemaName, TableName)
 )
-SELECT
+SELECT DISTINCT
     DatabaseName = LTRIM(RTRIM(DatabaseName)),
     SchemaName   = LTRIM(RTRIM(SchemaName)),
     TableName    = LTRIM(RTRIM(TableName))
 INTO #todo
 FROM todo_raw;
-
-WITH t AS (
-    SELECT DISTINCT DatabaseName, SchemaName, TableName
-    FROM #todo
-)
-DELETE FROM #todo;
-
-INSERT INTO #todo (DatabaseName, SchemaName, TableName)
-SELECT DatabaseName, SchemaName, TableName
-FROM t;
 
 DECLARE @sql NVARCHAR(MAX) = N'';
 
@@ -226,22 +216,12 @@ WITH todo_raw (DatabaseName, SchemaName, TableName) AS (
         {values_clause}
     ) v(DatabaseName, SchemaName, TableName)
 )
-SELECT
+SELECT DISTINCT
     DatabaseName = LTRIM(RTRIM(DatabaseName)),
     SchemaName   = LTRIM(RTRIM(SchemaName)),
     TableName    = LTRIM(RTRIM(TableName))
 INTO #todo
 FROM todo_raw;
-
-WITH t AS (
-    SELECT DISTINCT DatabaseName, SchemaName, TableName
-    FROM #todo
-)
-DELETE FROM #todo;
-
-INSERT INTO #todo (DatabaseName, SchemaName, TableName)
-SELECT DatabaseName, SchemaName, TableName
-FROM t;
 
 DECLARE @sql2 NVARCHAR(MAX) = N'';
 
@@ -360,7 +340,7 @@ DROP TABLE #todo;
 
 # === Definición del DAG ===
 with DAG(
-    dag_id="bq_to_sqlserver_pk_catalog_pymssql_two_queries_with_join_v1",
+    dag_id="bq_to_sqlserver_pk_catalog_pymssql_two_queries_with_join_v2",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
     schedule=None,
