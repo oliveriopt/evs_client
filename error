@@ -1,21 +1,4 @@
-
-Task failed with exception
-Traceback (most recent call last):
-  File "src/pymssql/_pymssql.pyx", line 447, in pymssql._pymssql.Cursor.execute
-  File "src/pymssql/_mssql.pyx", line 1125, in pymssql._mssql.MSSQLConnection.execute_query
-  File "src/pymssql/_mssql.pyx", line 1157, in pymssql._mssql.MSSQLConnection.execute_query
-  File "src/pymssql/_mssql.pyx", line 1379, in pymssql._mssql.MSSQLConnection.get_result
-  File "src/pymssql/_mssql.pyx", line 1855, in pymssql._mssql.check_cancel_and_raise
-  File "src/pymssql/_mssql.pyx", line 1901, in pymssql._mssql.raise_MSSQLDatabaseException
-pymssql._mssql.MSSQLDatabaseException: (208, b"Invalid object name 't'.DB-Lib error message 20018, severity 16:\nGeneral SQL Server error: Check messages from the SQL Server\n")
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/models/taskinstance.py", line 768, in _execute_task
-    result = _execute_callable(context=context, **execute_callable_kwargs)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/models/taskinstance.py", line 734, in _execute_callable
+execute_callable
     return ExecutionCallableRunner(
            ^^^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/python3.11/lib/python3.11/site-packages/airflow/utils/operator_helpers.py", line 252, in run
@@ -33,7 +16,7 @@ Traceback (most recent call last):
   File "/opt/python3.11/lib/python3.11/site-packages/airflow/utils/operator_helpers.py", line 252, in run
     return self.func(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/airflow/gcs/dags/09_op_dag_lookuptable_v2.py", line 304, in build_and_run_sqlserver_query
+  File "/home/airflow/gcs/dags/09_op_dag_lookuptable_v2.py", line 284, in build_and_run_sqlserver_query
     cursor.execute(pk_tsql)
-  File "src/pymssql/_pymssql.pyx", line 462, in pymssql._pymssql.Cursor.execute
-pymssql.exceptions.ProgrammingError: (208, b"Invalid object name 't'.DB-Lib error message 20018, severity 16:\nGeneral SQL Server error: Check messages from the SQL Server\n")
+  File "src/pymssql/_pymssql.pyx", line 465, in pymssql._pymssql.Cursor.execute
+pymssql.exceptions.OperationalError: (9829, b'STRING_AGG aggregation result exceeded the limit of 8000 bytes. Use LOB types to avoid result truncation.DB-Lib error message 20018, severity 16:\nGeneral SQL Server error: Check messages from the SQL Server\nDB-Lib error message 20018, severity 16:\nGeneral SQL Server error: Check messages from the SQL Server\n')
