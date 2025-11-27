@@ -19,7 +19,7 @@ def extract_and_process_metadata(**context):
     bq_hook = BigQueryHook(
         project_id="rxo-dataeng-datalake-np",   # GCP Project ID
         gcp_conn_id="google_cloud_default",     # Airflow GCP Connection ID
-        location="us-central1",                 # BigQuery dataset location
+        location="US",                 # BigQuery dataset location
     )
 
     # BigQuery dataset.table (sin el project, el hook ya lo conoce)
@@ -79,7 +79,7 @@ def extract_and_process_metadata(**context):
 
 
 with DAG(
-    dag_id="bq_metadata_sqlserver_extraction_v2",
+    dag_id="bq_metadata_sqlserver_extraction_v3",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
     schedule=None,  # Solo se ejecuta manualmente
