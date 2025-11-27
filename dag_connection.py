@@ -1,16 +1,17 @@
+
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
 from datetime import datetime
-import pyodbc
+import pymssql
 
 # Función que se ejecutará en el DAG
 def query_sql_server():
-    conn = pyodbc.connect(
-        'DRIVER={ODBC Driver 17 for SQL Server};'
-        'SERVER=fbtdw2090.qaamer.qacorp.xpo.com;'
-        'DATABASE=XpoMaster;'
-        'UID=svcGCPDataEngg;'
-        'PWD=OXZ6q67wr77k'
+    # Conexión usando pymssql
+    conn = pymssql.connect(
+        server='fbtdw2090.qaamer.qacorp.xpo.com',
+        user='svcGCPDataEngg',
+        password='OXZ6q67wr77k',
+        database='XpoMaster'
     )
     cursor = conn.cursor()
     cursor.execute("SELECT TOP (10) [OrderId] FROM [XpoMaster].[accounting].[Order];")
@@ -27,7 +28,7 @@ default_args = {
 }
 
 with DAG(
-    dag_id='sqlserver_connection_dag',
+    dag_id='sqlserver_connection_dag_pymssql',
     default_args=default_args,
     schedule_interval=None,
     catchup=False
@@ -38,4 +39,3 @@ with DAG(
         python_callable=query_sql_server
     )
 
-    task_query
