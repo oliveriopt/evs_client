@@ -1,4 +1,4 @@
-execute_callable
+File "/opt/python3.11/lib/python3.11/site-packages/airflow/models/taskinstance.py", line 734, in _execute_callable
     return ExecutionCallableRunner(
            ^^^^^^^^^^^^^^^^^^^^^^^^
   File "/opt/python3.11/lib/python3.11/site-packages/airflow/utils/operator_helpers.py", line 252, in run
@@ -16,7 +16,7 @@ execute_callable
   File "/opt/python3.11/lib/python3.11/site-packages/airflow/utils/operator_helpers.py", line 252, in run
     return self.func(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/airflow/gcs/dags/09_op_dag_lookuptable_v2.py", line 284, in build_and_run_sqlserver_query
+  File "/home/airflow/gcs/dags/09_op_dag_lookuptable_v2.py", line 301, in build_and_run_sqlserver_query
     cursor.execute(pk_tsql)
-  File "src/pymssql/_pymssql.pyx", line 465, in pymssql._pymssql.Cursor.execute
-pymssql.exceptions.OperationalError: (9829, b'STRING_AGG aggregation result exceeded the limit of 8000 bytes. Use LOB types to avoid result truncation.DB-Lib error message 20018, severity 16:\nGeneral SQL Server error: Check messages from the SQL Server\nDB-Lib error message 20018, severity 16:\nGeneral SQL Server error: Check messages from the SQL Server\n')
+  File "src/pymssql/_pymssql.pyx", line 462, in pymssql._pymssql.Cursor.execute
+pymssql.exceptions.ProgrammingError: (102, b"Incorrect syntax near ';'.DB-Lib error message 20018, severity 15:\nGeneral SQL Server error: Check messages from the SQL Server\nDB-Lib error message 20018, severity 15:\nGeneral SQL Server error: Check messages from the SQL Server\n")
