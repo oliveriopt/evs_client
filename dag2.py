@@ -70,10 +70,11 @@ def build_and_run_sqlserver_query(**context):
     """
     1) Pulls metadata from XCom.
     2) Deduplica (database_name, schema_name, table_name) y lo procesa en batches de 10.
-    3) Para cada batch:
-       - Ejecuta Query PK: [Database, Schema, Table, column_id, is_pk].
-       - Ejecuta Query ROWCOUNT: [Database, Schema, Table, total_rows].
-    4) Concatena resultados de todos los batches y hace merge en Pandas.
+    3) Para cada batch y para cada database_name del batch:
+       - Construye un CTE todo(...) desde VALUES.
+       - Ejecuta una query con solo CTEs para PKs.
+       - Ejecuta otra query con solo CTEs para rowcounts.
+    4) Concatena resultados y hace merge en Pandas.
     """
 
     ti = context["ti"]
@@ -97,105 +98,113 @@ def build_and_run_sqlserver_query(**context):
         print("No valid rows with non-null database/schema/table. Nothing to do.")
         return
 
-    # Nos quedamos con combinaciones únicas (Database, Schema, Table)
+    # Normalizamos strings y deduplicamos
     df_unique = (
-        df_meta[["database_name", "schema_name", "table_name"]]
+        df_meta.assign(
+            database_name=lambda d: d["database_name"].astype(str).str.strip(),
+            schema_name=lambda d: d["schema_name"].astype(str).str.strip(),
+            table_name=lambda d: d["table_name"].astype(str).str.strip(),
+        )[["database_name", "schema_name", "table_name"]]
         .drop_duplicates()
         .reset_index(drop=True)
     )
 
     print(f"Unique triplets (db, schema, table): {len(df_unique)}")
 
+    # Lista blanca de DBs que sabes que existen en este servidor
+    allowed_dbs = {"XpoMaster", "brkLTL", "XPOCustomer"}
+    df_unique = df_unique[df_unique["database_name"].isin(allowed_dbs)].reset_index(drop=True)
+    print(f"Unique triplets after allowed_dbs filter: {len(df_unique)}")
+
+    if df_unique.empty:
+        print("No rows after filtering by allowed_dbs.")
+        return
+
     batch_size = 10
 
-    # Acumuladores globales
     pk_dfs = []
     cnt_dfs = []
 
-    # Conexión única a SQL Server
     conn = None
     try:
         conn = pymssql.connect(
             server="fbtdw2090.qaamer.qacorp.xpo.com",
             user="svcGCPDataEngg",
             password="OXZ6q67wr77k",
-            database="XpoMaster",  # DB inicial; las queries usan [DatabaseName].sys.*
+            database="XpoMaster",  # DB inicial; luego usamos [DatabaseName].sys.*
         )
         cursor = conn.cursor()
 
-        # Procesar en batches
+        # Iteramos por batches de 10 tablas
         for start in range(0, len(df_unique), batch_size):
             df_batch = df_unique.iloc[start:start + batch_size].copy()
-            print(f"Processing batch rows {start} to {start + len(df_batch) - 1}")
+            print(f"\n=== Processing batch rows {start} to {start + len(df_batch) - 1} ===")
+            print(df_batch)
 
-            # Construimos VALUES(...) para este batch
-            values_rows = []
-            for _, row in df_batch.iterrows():
-                db  = str(row["database_name"]).strip()
-                sch = str(row["schema_name"]).strip()
-                tbl = str(row["table_name"]).strip()
+            # Databases únicas en este batch
+            dbs_in_batch = sorted(df_batch["database_name"].unique())
+            print(f"Databases in this batch: {dbs_in_batch}")
 
-                db_escaped  = db.replace("'", "''")
-                sch_escaped = sch.replace("'", "''")
-                tbl_escaped = tbl.replace("'", "''")
+            for db in dbs_in_batch:
+                df_db = df_batch[df_batch["database_name"] == db].copy()
+                if df_db.empty:
+                    continue
 
-                values_rows.append(
-                    f"(N'{db_escaped}', N'{sch_escaped}', N'{tbl_escaped}')"
-                )
+                print(f"\n--- Processing DB: {db} in this batch ---")
 
-            if not values_rows:
-                print("No rows in this batch, skipping.")
-                continue
+                # VALUES(...) solo con las tablas de esta DB
+                values_rows = []
+                for _, row in df_db.iterrows():
+                    sch = row["schema_name"]
+                    tbl = row["table_name"]
 
-            values_clause = ",\n        ".join(values_rows)
+                    db_esc = db.replace("'", "''")
+                    sch_esc = sch.replace("'", "''")
+                    tbl_esc = tbl.replace("'", "''")
 
-            # === Query 1 para el batch: PK catalog ===
-            pk_tsql = f"""
-/* === Batch PK: Lista objetivo (Database, Schema, Table) === */
-WITH todo_raw (DatabaseName, SchemaName, TableName) AS (
-    SELECT *
+                    values_rows.append(
+                        f"(N'{db_esc}', N'{sch_esc}', N'{tbl_esc}')"
+                    )
+
+                values_clause = ",\n        ".join(values_rows)
+
+                # === PK query para esta DB (solo CTEs) ===
+                pk_tsql = f"""
+WITH todo AS (
+    SELECT DISTINCT
+        LTRIM(RTRIM(DatabaseName)) AS DatabaseName,
+        LTRIM(RTRIM(SchemaName))   AS SchemaName,
+        LTRIM(RTRIM(TableName))    AS TableName
     FROM (VALUES
         {values_clause}
     ) v(DatabaseName, SchemaName, TableName)
-)
-SELECT DISTINCT
-    DatabaseName = LTRIM(RTRIM(DatabaseName)),
-    SchemaName   = LTRIM(RTRIM(SchemaName)),
-    TableName    = LTRIM(RTRIM(TableName))
-INTO #todo
-FROM todo_raw;
-
-DECLARE @sql NVARCHAR(MAX) = N'';
-
-SELECT
-    @sql = STRING_AGG(CAST(BlockSql AS NVARCHAR(MAX)), CHAR(10) + 'UNION ALL' + CHAR(10))
-FROM (
-    SELECT
-        d.DatabaseName,
-        BlockSql =
-N';WITH cols AS (
+),
+cols AS (
     SELECT 
-        DB      = N''' + d.DatabaseName + ''',
+        DB      = N'{db_esc}',
         s.name  AS [Schema],
         t.name  AS [Table],
         c.name  AS column_id
-    FROM [' + d.DatabaseName + '].sys.tables t
-    JOIN [' + d.DatabaseName + '].sys.schemas s ON s.schema_id = t.schema_id
-    JOIN [' + d.DatabaseName + '].sys.columns c ON c.object_id = t.object_id
-    WHERE c.name LIKE N''%Id''
+    FROM [{db_esc}].sys.tables t
+    JOIN [{db_esc}].sys.schemas s ON s.schema_id = t.schema_id
+    JOIN [{db_esc}].sys.columns c ON c.object_id = t.object_id
+    JOIN todo td
+      ON td.SchemaName = s.name
+     AND td.TableName  = t.name
+    WHERE c.name LIKE N'%Id'
 ),
 pk_cols AS (
     SELECT 
         s.name AS [Schema],
         t.name AS [Table],
         c.name AS column_id
-    FROM [' + d.DatabaseName + '].sys.tables t
-    JOIN [' + d.DatabaseName + '].sys.schemas s ON s.schema_id = t.schema_id
-    JOIN [' + d.DatabaseName + '].sys.key_constraints kc
-      ON kc.parent_object_id = t.object_id AND kc.type = ''PK''
-    JOIN [' + d.DatabaseName + '].sys.index_columns ic
+    FROM [{db_esc}].sys.tables t
+    JOIN [{db_esc}].sys.schemas s ON s.schema_id = t.schema_id
+    JOIN [{db_esc}].sys.key_constraints kc
+      ON kc.parent_object_id = t.object_id AND kc.type = 'PK'
+    JOIN [{db_esc}].sys.index_columns ic
       ON ic.object_id = t.object_id AND ic.index_id = kc.unique_index_id
-    JOIN [' + d.DatabaseName + '].sys.columns c
+    JOIN [{db_esc}].sys.columns c
       ON c.object_id = ic.object_id AND c.column_id = ic.column_id
 ),
 pick AS (
@@ -206,128 +215,71 @@ pick AS (
         cols.column_id,
         is_pk = CASE WHEN pk_cols.column_id IS NOT NULL THEN 1 ELSE 0 END
     FROM cols
-    JOIN #todo td
-      ON td.DatabaseName = cols.DB
-     AND td.SchemaName   = cols.[Schema]
-     AND td.TableName    = cols.[Table]
     LEFT JOIN pk_cols
       ON pk_cols.[Schema]   = cols.[Schema]
      AND pk_cols.[Table]    = cols.[Table]
      AND pk_cols.column_id  = cols.column_id
 )
 SELECT [Database], [Schema], [Table], column_id, is_pk
-FROM pick'
-    FROM (
-        SELECT DISTINCT DatabaseName
-        FROM #todo
-    ) d
-) AS q;
-
-IF @sql IS NULL OR LEN(@sql) = 0
-BEGIN
-    DROP TABLE #todo;
-    RAISERROR('No databases found in #todo for PK query (batch).', 16, 1);
-    RETURN;
-END;
-
-SET @sql = @sql + CHAR(10) + 'ORDER BY [Database], [Schema], [Table], column_id;';
-
-EXEC sys.sp_executesql @sql;
-
-DROP TABLE #todo;
+FROM pick
+ORDER BY [Database], [Schema], [Table], column_id;
 """
 
-            # === Query 2 para el batch: Rowcount por tabla ===
-            counts_tsql = f"""
-/* === Batch COUNTS: Lista objetivo (Database, Schema, Table) === */
-WITH todo_raw (DatabaseName, SchemaName, TableName) AS (
-    SELECT *
+                print("PK T-SQL for this DB:")
+                print(pk_tsql)
+
+                # Ejecutar PK
+                cursor.execute(pk_tsql)
+                rows_pk = cursor.fetchall()
+                if rows_pk:
+                    cols_pk = [col[0] for col in cursor.description]
+                    df_pk_batch_db = pd.DataFrame.from_records(rows_pk, columns=cols_pk)
+                    pk_dfs.append(df_pk_batch_db)
+                    print(f"PK rows for DB {db}: {len(df_pk_batch_db)}")
+                else:
+                    print(f"PK query returned no rows for DB {db}.")
+
+                # === COUNTS query para esta DB (solo CTEs) ===
+                counts_tsql = f"""
+WITH todo AS (
+    SELECT DISTINCT
+        LTRIM(RTRIM(DatabaseName)) AS DatabaseName,
+        LTRIM(RTRIM(SchemaName))   AS SchemaName,
+        LTRIM(RTRIM(TableName))    AS TableName
     FROM (VALUES
         {values_clause}
     ) v(DatabaseName, SchemaName, TableName)
 )
-SELECT DISTINCT
-    DatabaseName = LTRIM(RTRIM(DatabaseName)),
-    SchemaName   = LTRIM(RTRIM(SchemaName)),
-    TableName    = LTRIM(RTRIM(TableName))
-INTO #todo
-FROM todo_raw;
-
-DECLARE @sql2 NVARCHAR(MAX) = N'';
-
 SELECT
-    @sql2 = STRING_AGG(CAST(BlockSql AS NVARCHAR(MAX)), CHAR(10) + 'UNION ALL' + CHAR(10))
-FROM (
-    SELECT
-        d.DatabaseName,
-        BlockSql =
-N'SELECT
-    [Database]  = N''' + d.DatabaseName + ''',
+    [Database]  = N'{db_esc}',
     [Schema]    = s.name,
     [Table]     = t.name,
     total_rows  = SUM(p.[rows])
-FROM [' + d.DatabaseName + '].sys.tables t
-JOIN [' + d.DatabaseName + '].sys.schemas s ON s.schema_id = t.schema_id
-JOIN [' + d.DatabaseName + '].sys.partitions p ON p.object_id = t.object_id
-JOIN #todo td
-  ON td.DatabaseName = N''' + d.DatabaseName + '''
- AND td.SchemaName   = s.name
- AND td.TableName    = t.name
+FROM [{db_esc}].sys.tables t
+JOIN [{db_esc}].sys.schemas s ON s.schema_id = t.schema_id
+JOIN [{db_esc}].sys.partitions p ON p.object_id = t.object_id
+JOIN todo td
+  ON td.SchemaName = s.name
+ AND td.TableName  = t.name
 WHERE p.index_id IN (0, 1)
-GROUP BY s.name, t.name'
-    FROM (
-        SELECT DISTINCT DatabaseName
-        FROM #todo
-    ) d
-) AS q;
-
-IF @sql2 IS NULL OR LEN(@sql2) = 0
-BEGIN
-    DROP TABLE #todo;
-    RAISERROR('No databases found in #todo for rowcount query (batch).', 16, 1);
-    RETURN;
-END;
-
-SET @sql2 = @sql2 + CHAR(10) + 'ORDER BY [Database], [Schema], [Table];';
-
-EXEC sys.sp_executesql @sql2;
-
-DROP TABLE #todo;
+GROUP BY s.name, t.name
+ORDER BY [Database], [Schema], [Table];
 """
 
-            # Ejecutar PK para el batch
-            print("Executing PK batch T-SQL:")
-            print(pk_tsql)
-            cursor.execute(pk_tsql)
-            try:
-                rows_pk = cursor.fetchall()
-                if rows_pk:
-                    cols_pk = [col[0] for col in cursor.description]
-                    df_pk_batch = pd.DataFrame.from_records(rows_pk, columns=cols_pk)
-                    pk_dfs.append(df_pk_batch)
-                    print(f"PK rows in this batch: {len(df_pk_batch)}")
-                else:
-                    print("PK query (batch) returned no rows.")
-            except pymssql.ProgrammingError:
-                print("PK query (batch) did not return a resultset.")
+                print("COUNTS T-SQL for this DB:")
+                print(counts_tsql)
 
-            # Ejecutar COUNTS para el batch
-            print("Executing COUNTS batch T-SQL:")
-            print(counts_tsql)
-            cursor.execute(counts_tsql)
-            try:
+                cursor.execute(counts_tsql)
                 rows_cnt = cursor.fetchall()
                 if rows_cnt:
                     cols_cnt = [col[0] for col in cursor.description]
-                    df_cnt_batch = pd.DataFrame.from_records(rows_cnt, columns=cols_cnt)
-                    cnt_dfs.append(df_cnt_batch)
-                    print(f"Rowcount rows in this batch: {len(df_cnt_batch)}")
+                    df_cnt_batch_db = pd.DataFrame.from_records(rows_cnt, columns=cols_cnt)
+                    cnt_dfs.append(df_cnt_batch_db)
+                    print(f"Rowcount rows for DB {db}: {len(df_cnt_batch_db)}")
                 else:
-                    print("Rowcount query (batch) returned no rows.")
-            except pymssql.ProgrammingError:
-                print("Rowcount query (batch) did not return a resultset.")
+                    print(f"Rowcount query returned no rows for DB {db}.")
 
-        # Una vez recorridos todos los batches, concatenamos
+        # Concatenar todos los resultados
         if pk_dfs:
             df_pk_all = pd.concat(pk_dfs, ignore_index=True)
         else:
@@ -338,11 +290,11 @@ DROP TABLE #todo;
         else:
             df_cnt_all = pd.DataFrame(columns=["Database", "Schema", "Table", "total_rows"])
 
-        print("Global PK DF:")
+        print("\nGlobal PK DF:")
         print(df_pk_all.head())
         print(f"Global PK rows: {len(df_pk_all)}")
 
-        print("Global COUNTS DF:")
+        print("\nGlobal COUNTS DF:")
         print(df_cnt_all.head())
         print(f"Global rowcount rows: {len(df_cnt_all)}")
 
@@ -358,7 +310,7 @@ DROP TABLE #todo;
             if "total_rows" not in df_final.columns:
                 df_final["total_rows"] = pd.NA
 
-        print("Final merged result (PK + total_rows):")
+        print("\nFinal merged result (PK + total_rows):")
         print(df_final.head())
         print(f"Total merged rows: {len(df_final)}")
 
@@ -372,7 +324,7 @@ DROP TABLE #todo;
 
 # === Definición del DAG ===
 with DAG(
-    dag_id="bq_to_sqlserver_pk_catalog_pymssql_batches_v1",
+    dag_id="bq_to_sqlserver_pk_catalog_pymssql_batches_cte_only_v1",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
     schedule=None,
