@@ -65,19 +65,16 @@ def extract_and_process_metadata(**context):
     context["ti"].xcom_push(key="metadata_rows", value=rows_dicts)
 
 
-# === TASK 2: Construir T-SQL dinámica (con total_rows) y ejecutarla en SQL Server ===
+# === TASK 2: Ejecutar dos queries en SQL Server (PKs + rowcounts) y hacer join ===
 def build_and_run_sqlserver_query(**context):
     """
     1) Pulls metadata from XCom.
-    2) Construye dinámicamente el bloque VALUES de todo_raw
+    2) Construye dinámicamente el VALUES(...) de todo_raw
        a partir de (database_name, schema_name, table_name).
-    3) Inyecta ese VALUES en la T-SQL abstracta.
-    4) En cada database construye:
-       - cols: columnas cuyo nombre termina en 'Id'
-       - pk_cols: columnas que forman PK
-       - row_counts: rowcount por tabla usando sys.partitions
-       - pick: cruza todo y añade is_pk + total_rows
-    5) Ejecuta la T-SQL en SQL Server y carga el resultset en un DataFrame.
+    3) Ejecuta:
+       - Query PK: devuelve [Database, Schema, Table, column_id, is_pk].
+       - Query ROWCOUNT: devuelve [Database, Schema, Table, total_rows].
+    4) Hace un merge en Pandas y muestra el resultado combinado.
     """
 
     ti = context["ti"]
@@ -123,11 +120,8 @@ def build_and_run_sqlserver_query(**context):
 
     values_clause = ",\n        ".join(values_rows)
 
-    # T-SQL abstracta con:
-    #   - todo_raw desde BQ (VALUES dinámico)
-    #   - row_counts por tabla usando sys.partitions
-    #   - salida: Database, Schema, Table, column_id, is_pk, total_rows
-    final_tsql = f"""
+    # === Query 1: PK catalog (Database, Schema, Table, column_id, is_pk) ===
+    pk_tsql = f"""
 /* === 1) Lista objetivo (Database, Schema, Table) desde BigQuery === */
 WITH todo_raw (DatabaseName, SchemaName, TableName) AS (
     SELECT *
@@ -142,7 +136,6 @@ SELECT
 INTO #todo
 FROM todo_raw;
 
--- Por seguridad, evita duplicados exactos
 WITH t AS (
     SELECT DISTINCT DatabaseName, SchemaName, TableName
     FROM #todo
@@ -153,10 +146,8 @@ INSERT INTO #todo (DatabaseName, SchemaName, TableName)
 SELECT DatabaseName, SchemaName, TableName
 FROM t;
 
-
 DECLARE @sql NVARCHAR(MAX) = N'';
 
--- === 2) Construimos dinámicamente, por cada DatabaseName distinto ===
 SELECT
     @sql = STRING_AGG(BlockSql, CHAR(10) + 'UNION ALL' + CHAR(10))
 FROM (
@@ -188,26 +179,13 @@ pk_cols AS (
     JOIN [' + d.DatabaseName + '].sys.columns c
       ON c.object_id = ic.object_id AND c.column_id = ic.column_id
 ),
-row_counts AS (
-    SELECT
-        s.name AS [Schema],
-        t.name AS [Table],
-        total_rows = SUM(p.[rows])
-    FROM [' + d.DatabaseName + '].sys.tables t
-    JOIN [' + d.DatabaseName + '].sys.schemas s ON s.schema_id = t.schema_id
-    JOIN [' + d.DatabaseName + '].sys.partitions p
-      ON p.object_id = t.object_id
-    WHERE p.index_id IN (0, 1)
-    GROUP BY s.name, t.name
-),
 pick AS (
     SELECT 
         cols.DB      AS [Database],
         cols.[Schema],
         cols.[Table],
         cols.column_id,
-        is_pk     = CASE WHEN pk_cols.column_id IS NOT NULL THEN 1 ELSE 0 END,
-        total_rows = rc.total_rows
+        is_pk = CASE WHEN pk_cols.column_id IS NOT NULL THEN 1 ELSE 0 END
     FROM cols
     JOIN #todo td
       ON td.DatabaseName = cols.DB
@@ -217,11 +195,8 @@ pick AS (
       ON pk_cols.[Schema]   = cols.[Schema]
      AND pk_cols.[Table]    = cols.[Table]
      AND pk_cols.column_id  = cols.column_id
-    LEFT JOIN row_counts rc
-      ON rc.[Schema] = cols.[Schema]
-     AND rc.[Table]  = cols.[Table]
 )
-SELECT [Database], [Schema], [Table], column_id, is_pk, total_rows
+SELECT [Database], [Schema], [Table], column_id, is_pk
 FROM pick'
     FROM (
         SELECT DISTINCT DatabaseName
@@ -229,25 +204,90 @@ FROM pick'
     ) d
 ) AS q;
 
--- Si no hay nada, abortamos limpio
 IF @sql IS NULL OR LEN(@sql) = 0
 BEGIN
-    RAISERROR('No databases found in #todo.', 16, 1);
+    RAISERROR('No databases found in #todo for PK query.', 16, 1);
     RETURN;
 END;
 
--- === 3) Ejecutamos todo unido y ordenado ===
 SET @sql = @sql + CHAR(10) + 'ORDER BY [Database], [Schema], [Table], column_id;';
-
-PRINT @sql; -- opcional, para debug
 
 EXEC sys.sp_executesql @sql;
 
 DROP TABLE #todo;
 """
 
-    print("Final T-SQL to be executed on SQL Server:")
-    print(final_tsql)
+    # === Query 2: Rowcount por tabla (Database, Schema, Table, total_rows) ===
+    counts_tsql = f"""
+/* === 1) Lista objetivo (Database, Schema, Table) desde BigQuery === */
+WITH todo_raw (DatabaseName, SchemaName, TableName) AS (
+    SELECT *
+    FROM (VALUES
+        {values_clause}
+    ) v(DatabaseName, SchemaName, TableName)
+)
+SELECT
+    DatabaseName = LTRIM(RTRIM(DatabaseName)),
+    SchemaName   = LTRIM(RTRIM(SchemaName)),
+    TableName    = LTRIM(RTRIM(TableName))
+INTO #todo
+FROM todo_raw;
+
+WITH t AS (
+    SELECT DISTINCT DatabaseName, SchemaName, TableName
+    FROM #todo
+)
+DELETE FROM #todo;
+
+INSERT INTO #todo (DatabaseName, SchemaName, TableName)
+SELECT DatabaseName, SchemaName, TableName
+FROM t;
+
+DECLARE @sql2 NVARCHAR(MAX) = N'';
+
+SELECT
+    @sql2 = STRING_AGG(BlockSql, CHAR(10) + 'UNION ALL' + CHAR(10))
+FROM (
+    SELECT
+        d.DatabaseName,
+        BlockSql =
+N'SELECT
+    [Database]  = N''' + d.DatabaseName + ''',
+    [Schema]    = s.name,
+    [Table]     = t.name,
+    total_rows  = SUM(p.[rows])
+FROM [' + d.DatabaseName + '].sys.tables t
+JOIN [' + d.DatabaseName + '].sys.schemas s ON s.schema_id = t.schema_id
+JOIN [' + d.DatabaseName + '].sys.partitions p ON p.object_id = t.object_id
+JOIN #todo td
+  ON td.DatabaseName = N''' + d.DatabaseName + '''
+ AND td.SchemaName   = s.name
+ AND td.TableName    = t.name
+WHERE p.index_id IN (0, 1)
+GROUP BY s.name, t.name'
+    FROM (
+        SELECT DISTINCT DatabaseName
+        FROM #todo
+    ) d
+) AS q;
+
+IF @sql2 IS NULL OR LEN(@sql2) = 0
+BEGIN
+    RAISERROR('No databases found in #todo for rowcount query.', 16, 1);
+    RETURN;
+END;
+
+SET @sql2 = @sql2 + CHAR(10) + 'ORDER BY [Database], [Schema], [Table];';
+
+EXEC sys.sp_executesql @sql2;
+
+DROP TABLE #todo;
+"""
+
+    print("PK T-SQL to be executed on SQL Server:")
+    print(pk_tsql)
+    print("COUNTS T-SQL to be executed on SQL Server:")
+    print(counts_tsql)
 
     # 4) Ejecutar en SQL Server con pymssql
     conn = None
@@ -256,23 +296,62 @@ DROP TABLE #todo;
             server="fbtdw2090.qaamer.qacorp.xpo.com",
             user="svcGCPDataEngg",
             password="OXZ6q67wr77k",
-            database="XpoMaster",  # DB inicial; la T-SQL accede al resto via [DatabaseName].sys.*
+            database="XpoMaster",  # DB inicial; las queries usan [DatabaseName].sys.*
         )
         cursor = conn.cursor()
-        cursor.execute(final_tsql)
 
+        # --- Query 1: PKs ---
+        cursor.execute(pk_tsql)
         try:
-            rows = cursor.fetchall()
-            if rows:
-                columns = [col[0] for col in cursor.description]
-                df_pk = pd.DataFrame.from_records(rows, columns=columns)
-                print("Result from SQL Server dynamic PK/Id catalog (with total_rows):")
+            rows_pk = cursor.fetchall()
+            if rows_pk:
+                cols_pk = [col[0] for col in cursor.description]
+                df_pk = pd.DataFrame.from_records(rows_pk, columns=cols_pk)
+                print("PK catalog result:")
                 print(df_pk.head())
-                print(f"Total rows from SQL Server: {len(df_pk)}")
+                print(f"Total PK rows: {len(df_pk)}")
             else:
-                print("No rows returned by the dynamic T-SQL.")
+                print("PK query returned no rows.")
+                df_pk = pd.DataFrame(columns=["Database", "Schema", "Table", "column_id", "is_pk"])
         except pymssql.ProgrammingError:
-            print("No resultset to fetch (EXEC may have printed only).")
+            print("PK query did not return a resultset.")
+            df_pk = pd.DataFrame(columns=["Database", "Schema", "Table", "column_id", "is_pk"])
+
+        # --- Query 2: Rowcounts ---
+        cursor.execute(counts_tsql)
+        try:
+            rows_cnt = cursor.fetchall()
+            if rows_cnt:
+                cols_cnt = [col[0] for col in cursor.description]
+                df_cnt = pd.DataFrame.from_records(rows_cnt, columns=cols_cnt)
+                print("Rowcount result:")
+                print(df_cnt.head())
+                print(f"Total rowcount rows: {len(df_cnt)}")
+            else:
+                print("Rowcount query returned no rows.")
+                df_cnt = pd.DataFrame(columns=["Database", "Schema", "Table", "total_rows"])
+        except pymssql.ProgrammingError:
+            print("Rowcount query did not return a resultset.")
+            df_cnt = pd.DataFrame(columns=["Database", "Schema", "Table", "total_rows"])
+
+        # --- Join en Pandas: PK + total_rows ---
+        if not df_pk.empty and not df_cnt.empty:
+            df_final = df_pk.merge(
+                df_cnt,
+                on=["Database", "Schema", "Table"],
+                how="left",
+            )
+        else:
+            df_final = df_pk.copy()
+            if "total_rows" not in df_final.columns:
+                df_final["total_rows"] = pd.NA
+
+        print("Final merged result (PK + total_rows):")
+        print(df_final.head())
+        print(f"Total merged rows: {len(df_final)}")
+
+        # Si quieres, puedes empujar este df_final a XCom:
+        # ti.xcom_push(key="pk_with_rowcounts", value=df_final.to_dict(orient="records"))
 
     finally:
         if conn is not None:
@@ -281,11 +360,11 @@ DROP TABLE #todo;
 
 # === Definición del DAG ===
 with DAG(
-    dag_id="bq_to_sqlserver_pk_catalog_pymssql_dynamic_with_counts_v1",
+    dag_id="bq_to_sqlserver_pk_catalog_pymssql_two_queries_with_join_v1",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
     schedule=None,
-    tags=["bigquery", "metadata", "sqlserver", "pk_catalog", "dynamic", "rowcount"],
+    tags=["bigquery", "metadata", "sqlserver", "pk_catalog", "rowcount", "dynamic"],
 ) as dag:
 
     extract_metadata_task = PythonOperator(
