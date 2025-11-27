@@ -66,11 +66,11 @@ def extract_and_process_metadata(**context):
     context["ti"].xcom_push(key="metadata_rows", value=rows_dicts)
 
 
-# === TASK 2: Construir query tipo query1 desde el DataFrame y ejecutarla en SQL Server (pymssql) ===
+# === TASK 2: Filtrar solo XpoMaster, construir query y ejecutarla en SQL Server (pymssql) ===
 def build_and_run_sqlserver_query(**context):
     """
-    Pulls metadata from XCom, builds a T-SQL query (based on query1)
-    using database_name, schema_name, table_name from BigQuery,
+    Pulls metadata from XCom, filters only database_name = 'XpoMaster',
+    builds a T-SQL query (based on query1) using that metadata,
     executes it on SQL Server using pymssql, and loads the result into a DataFrame.
     """
 
@@ -85,10 +85,21 @@ def build_and_run_sqlserver_query(**context):
         return
 
     df_meta = pd.DataFrame(metadata_rows)
-    print("Metadata from BigQuery:")
+    print("Full metadata from BigQuery:")
     print(df_meta.head())
 
-    # 1) Construir VALUES (...) para input_rows a partir del DataFrame
+    # --- Filtro SOLO XpoMaster ---
+    df_meta = df_meta[df_meta["database_name"] == "XpoMaster"].copy()
+
+    if df_meta.empty:
+        print("No rows with database_name = 'XpoMaster'. Nothing to do.")
+        return
+
+    print("Filtered metadata (database_name = 'XpoMaster'):")
+    print(df_meta.head())
+    # ------------------------------
+
+    # 1) Construir VALUES (...) para input_rows a partir del DataFrame filtrado
     values_rows = []
     for _, row in df_meta.iterrows():
         db  = (row.get("database_name") or "").replace("'", "''")
@@ -100,17 +111,17 @@ def build_and_run_sqlserver_query(**context):
         )
 
     if not values_rows:
-        print("No valid rows to build VALUES clause.")
+        print("No valid rows to build VALUES clause after filtering by XpoMaster.")
         return
 
     values_clause = ",\n        ".join(values_rows)
 
-    # 2) Construir pk_catalog a partir de databases únicas
+    # 2) Construir pk_catalog a partir de databases únicas (ya filtradas a XpoMaster)
     db_names = sorted(
-        {row["database_name"] for row in metadata_rows if row.get("database_name")}
+        {row["database_name"] for _, row in df_meta.iterrows() if row.get("database_name")}
     )
     if not db_names:
-        print("No database_name values found in metadata.")
+        print("No database_name values found after filtering.")
         return
 
     select_fragments = []
@@ -139,7 +150,7 @@ JOIN [{db_escaped}].sys.columns c
 
     pk_catalog_part = "\nUNION ALL\n".join(select_fragments)
 
-    # 3) Query final estilo query1, pero generada desde el DataFrame
+    # 3) Query final estilo query1, pero generada desde el DataFrame filtrado
     final_tsql = f"""
 WITH input_rows AS (
     SELECT *
@@ -168,17 +179,16 @@ SELECT * FROM pk_catalog;
             server="fbtdw2090.qaamer.qacorp.xpo.com",
             user="svcGCPDataEngg",
             password="OXZ6q67wr77k",
-            database="XpoMaster",  # DB inicial; la query usa [db].sys.xxx para cada base
+            database="XpoMaster",  # DB inicial; la query usa [XpoMaster].sys.xxx
         )
         cursor = conn.cursor()
         cursor.execute(final_tsql)
         rows = cursor.fetchall()
 
-        # columnas desde cursor.description
         columns = [col[0] for col in cursor.description]
         df_pk = pd.DataFrame.from_records(rows, columns=columns)
 
-        print("Result from SQL Server PK catalog:")
+        print("Result from SQL Server PK catalog (XpoMaster only):")
         print(df_pk.head())
         print(f"Total rows from SQL Server: {len(df_pk)}")
 
@@ -192,20 +202,21 @@ SELECT * FROM pk_catalog;
 
 # === Definición del DAG ===
 with DAG(
-    dag_id="bq_to_sqlserver_pk_catalog_pymssql_v1",
+    dag_id="bq_to_sqlserver_pk_catalog_pymssql_xpomaster_v1",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
     schedule=None,  # solo manual
-    tags=["bigquery", "metadata", "sqlserver", "pk_catalog"],
+    tags=["bigquery", "metadata", "sqlserver", "pk_catalog", "XpoMaster"],
     doc_md="""
-    ### DAG: BigQuery metadata → dynamic PK catalog in SQL Server (pymssql)
+    ### DAG: BigQuery metadata → dynamic PK catalog in SQL Server (pymssql, XpoMaster only)
 
     1) Extracts `database_name`, `schema_name`, `table_name` from
        `dataops_admin.extraction_metadata` in BigQuery.
-    2) Builds a dynamic T-SQL query (based on the original query1)
-       using that metadata to inspect PKs across all listed databases.
-    3) Executes the query on SQL Server via `pymssql`.
-    4) Loads the result into a Pandas DataFrame (printed in logs).
+    2) Filters rows to `database_name = 'XpoMaster'`.
+    3) Builds a dynamic T-SQL query (based on the original query1)
+       using that metadata to inspect PKs in XpoMaster.
+    4) Executes the query on SQL Server via `pymssql`.
+    5) Loads the result into a Pandas DataFrame (printed in logs).
     """,
 ) as dag:
 
@@ -216,7 +227,7 @@ with DAG(
     )
 
     run_sqlserver_pk_task = PythonOperator(
-        task_id="build_and_run_sqlserver_pk_query",
+        task_id="build_and_run_sqlserver_pk_query_xpomaster",
         python_callable=build_and_run_sqlserver_query,
         provide_context=True,
     )
