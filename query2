@@ -1,0 +1,362 @@
+/* === Lista objetivo (Database, Schema, Table) === */
+WITH todo(DatabaseName, SchemaName, TableName) AS (
+    SELECT * FROM (VALUES
+(N'XpoMaster                ', N'accounting', N'AccountsPayable                           '),
+        (N'XpoMaster                ', N'accounting', N'AccountsReceivable                        '),
+        (N'XpoMaster                ', N'accounting', N'ChargeAdjustment                          '),
+        (N'XpoMaster                ', N'accounting', N'FinancialStatusType                       '),
+        (N'brkLTL                   ', N'mr        ', N'MarginRule                                '),
+        (N'XpoMaster                ', N'carrier   ', N'AccessControlType                         '),
+        (N'XpoMaster                ', N'carrier   ', N'Accounting                                '),
+        (N'XPOMaster                ', N'carrier   ', N'Activity                                  '),
+        (N'XPOMaster                ', N'carrier   ', N'ActivityReasonType                        '),
+        (N'XPOMaster                ', N'carrier   ', N'ActivityReasonType_ActivityResultType     '),
+        (N'XPOMaster                ', N'carrier   ', N'ActivityResultType                        '),
+        (N'XPOMaster                ', N'carrier   ', N'ActivityType                              '),
+        (N'XpoMaster                ', N'carrier   ', N'Alert                                     '),
+        (N'XpoMaster                ', N'carrier   ', N'Carrier                                   '),
+        (N'XPOMaster                ', N'carrier   ', N'carrier_document                          '),
+        (N'XPOMaster                ', N'carrier   ', N'Carrier_OperationCargoType                '),
+        (N'XPOMaster                ', N'carrier   ', N'Carrier_OperationClassificationType       '),
+        (N'XPOMaster                ', N'carrier   ', N'Carrier_OperationServiceType              '),
+        (N'XpoMaster                ', N'carrier   ', N'CarrierAuditHistory                       '),
+        (N'XPOMaster                ', N'carrier   ', N'CarrierContact                            '),
+        (N'XPOMaster                ', N'carrier   ', N'CarrierContactDeleteReason                '),
+        (N'XPOMaster                ', N'carrier   ', N'CarrierContactStaging                     '),
+        (N'XPOMaster                ', N'carrier   ', N'CarrierContactStatus                      '),
+        (N'XPOMaster                ', N'carrier   ', N'CarrierEmail                              '),
+        (N'XPOMaster                ', N'carrier   ', N'CarrierGroup                              '),
+        (N'XPOMaster                ', N'carrier   ', N'CarrierGroupCarrier                       '),
+        (N'XPOMaster                ', N'carrier   ', N'CarrierOperatingState                     '),
+        (N'XpoMaster                ', N'carrier   ', N'CarrierPortfolio                          '),
+        (N'XPOMaster                ', N'carrier   ', N'CarrierRMISCommodity                      '),
+        (N'XPOMaster                ', N'carrier   ', N'CustomerExclusion                         '),
+        (N'XPOMaster                ', N'carrier   ', N'CustomerInclusion                         '),
+        (N'XPOMaster                ', N'carrier   ', N'Equipment                                 '),
+        (N'XpoMaster                ', N'carrier   ', N'FOBazookaCarrierMapping                   '),
+        (N'XPOMaster                ', N'carrier   ', N'InsuranceCoverageType                     '),
+        (N'XPOMaster                ', N'carrier   ', N'InsuranceLimitCategoryType                '),
+        (N'XPOMaster                ', N'carrier   ', N'InsuranceLimitType                        '),
+        (N'XPOMaster                ', N'carrier   ', N'InsurancePolicy                           '),
+        (N'XPOMaster                ', N'carrier   ', N'InsurancePolicy_InsuranceCoverageType     '),
+        (N'XPOMaster                ', N'carrier   ', N'InsurancePolicyLimit                      '),
+        (N'XPOMaster                ', N'carrier   ', N'InsuranceType                             '),
+        (N'XPOMaster                ', N'carrier   ', N'Market                                    '),
+        (N'XpoMaster                ', N'carrier   ', N'Metrics                                   '),
+        (N'XPOMaster                ', N'carrier   ', N'Metrics                                   '),
+        (N'XPOMaster                ', N'carrier   ', N'NetworkStatus                             '),
+        (N'XPOMaster                ', N'carrier   ', N'OperatingState                            '),
+        (N'XPOMaster                ', N'carrier   ', N'OperatingStatusType                       '),
+        (N'XpoMaster                ', N'carrier   ', N'Operation                                 '),
+        (N'XPOMaster                ', N'carrier   ', N'OperationCargoType                        '),
+        (N'XPOMaster                ', N'carrier   ', N'OperationClassificationType               '),
+        (N'XPOMaster                ', N'carrier   ', N'OperationServiceType                      '),
+        (N'XPOMaster                ', N'carrier   ', N'OperationType                             '),
+        (N'XPOMaster                ', N'carrier   ', N'PreferredLane                             '),
+        (N'XPOMaster                ', N'carrier   ', N'PreferredLaneMatchNotification            '),
+        (N'XPOMaster                ', N'carrier   ', N'PreferredLaneSegment                      '),
+        (N'XPOMaster                ', N'carrier   ', N'ReportingCodeExclusion                    '),
+        (N'XPOMaster                ', N'carrier   ', N'ReportingCodeExclusionCategory            '),
+        (N'XPOMaster                ', N'carrier   ', N'ReportingCodeInclusion                    '),
+        (N'XPOMaster                ', N'carrier   ', N'ReportingCodeInclusionCategory            '),
+        (N'XPOMaster                ', N'carrier   ', N'SafetyBasicsValue                         '),
+        (N'XPOMaster                ', N'carrier   ', N'SafetyProfile                             '),
+        (N'XPOMaster                ', N'carrier   ', N'SafetyRatingType                          '),
+        (N'XPOMaster                ', N'carrier   ', N'SafetyReviewType                          '),
+        (N'XPOMaster                ', N'carrier   ', N'Specialization                            '),
+        (N'XPOMaster                ', N'carrier   ', N'StatusType                                '),
+        (N'XPOMaster                ', N'carrier   ', N'TrackingServiceType                       '),
+        (N'XPOMaster                ', N'carrier   ', N'UserPreferredLane                         '),
+        (N'XPOMaster                ', N'carrier   ', N'UserPreferredLane_ReportingCode           '),
+        (N'XPOMaster                ', N'carrier   ', N'UserPreferredLaneMatch                    '),
+        (N'XPOCustomer              ', N'crm       ', N'Address                                   '),
+        (N'XPOCustomer              ', N'crm       ', N'AuditHistory                              '),
+        (N'XPOCustomer              ', N'crm       ', N'BillingMethod                             '),
+        (N'XPOMaster                ', N'crm       ', N'BillingMethodEmail                        '),
+        (N'XPOCustomer              ', N'crm       ', N'BillingMethodEmail                        '),
+        (N'XPOCustomer              ', N'crm       ', N'BillingMethodUser                         '),
+        (N'XPOCustomer              ', N'crm       ', N'BillingRequirements                       '),
+        (N'XPOCustomer              ', N'crm       ', N'BillingRequirementsWorkflowDocumentType   '),
+        (N'XPOCustomer              ', N'crm       ', N'Contact                                   '),
+        (N'XPOCustomer              ', N'crm       ', N'Country                                   '),
+        (N'XPOCustomer              ', N'crm       ', N'Customer                                  '),
+        (N'XPOCustomer              ', N'crm       ', N'CustomerAddress                           '),
+        (N'XPOCustomer              ', N'crm       ', N'CustomerBillingRule                       '),
+        (N'XPOCustomer              ', N'crm       ', N'CustomerBusinessUnit                      '),
+        (N'XPOCustomer              ', N'crm       ', N'CustomerCarrierThresoldSettings           '),
+        (N'XPOCustomer              ', N'crm       ', N'CustomerContact                           '),
+        (N'XPOCustomer              ', N'crm       ', N'CustomerSalesPerson                       '),
+        (N'XPOCustomer              ', N'crm       ', N'CustomerServiceSetting                    '),
+        (N'XPOCustomer              ', N'crm       ', N'Document                                  '),
+        (N'XPOCustomer              ', N'crm       ', N'DocumentLocation                          '),
+        (N'XPOCustomer              ', N'crm       ', N'DocumentReportingCode                     '),
+        (N'XPOCustomer              ', N'crm       ', N'Metadata                                  '),
+        (N'XPOCustomer              ', N'crm       ', N'Metadata                                  '),
+        (N'XPOCustomer              ', N'crm       ', N'Note                                      '),
+        (N'XPOCustomer              ', N'crm       ', N'NoteTypeId                                '),
+        (N'XPOCustomer              ', N'crm       ', N'PricingModelType                          '),
+        (N'XPOCustomer              ', N'crm       ', N'Ratesettings                              '),
+        (N'XPOCustomer              ', N'crm       ', N'RateSettings                              '),
+        (N'XPOCustomer              ', N'crm       ', N'RequiredParameter                         '),
+        (N'XpoMaster                ', N'customer  ', N'Customer                                  '),
+        (N'XpoMaster                ', N'customer  ', N'Location                                  '),
+        (N'XPOMaster                ', N'customer  ', N'Location_AccessorialRequirements          '),
+        (N'XPOMaster                ', N'customer  ', N'LocationSalesPerson                       '),
+        (N'VirtualRep               ', N'dbo       ', N'AssignmentHistory                         '),
+        (N'VirtualRep               ', N'dbo       ', N'AssignmentStatus                          '),
+        (N'RatesEngine              ', N'dbo       ', N'Bid                                       '),
+        (N'RatesEngine              ', N'dbo       ', N'BidLane                                   '),
+        (N'PartnerMaster            ', N'dbo       ', N'BillToGroups                              '),
+        (N'CarrierService           ', N'dbo       ', N'CarrierRateInfo                           '),
+        (N'XpoMaster                ', N'dbo       ', N'ChargeCode                                '),
+        (N'XPOCustomer              ', N'dbo       ', N'ContractSettings                          '),
+        (N'XPOMaster                ', N'dbo       ', N'ContractSettingsBidResult                 '),
+        (N'XPOCustomer              ', N'dbo       ', N'ContractSettingsUtilizationRecommendations'),
+        (N'XpoMaster                ', N'dbo       ', N'Currency                                  '),
+        (N'XPOCustomer              ', N'dbo       ', N'CustomerOrderEntryRequirements            '),
+        (N'XPOCustomer              ', N'dbo       ', N'CustomerReportingCode                     '),
+        (N'XpoMaster                ', N'dbo       ', N'DeductionCode                             '),
+        (N'WarehouseBrokerage       ', N'dbo       ', N'DimDate                                   '),
+        (N'XpoMaster                ', N'dbo       ', N'EquipmentCategory                         '),
+        (N'XpoMaster                ', N'dbo       ', N'EquipmentType                             '),
+        (N'CarrierService           ', N'dbo       ', N'Loyalty                                   '),
+        (N'XpoConnectCarrierServices', N'dbo       ', N'LoyaltyAccountSummary                     '),
+        (N'XpoConnectCarrierServices', N'dbo       ', N'LoyaltyDetails                            '),
+        (N'XpoConnectCarrierServices', N'dbo       ', N'LoyaltyLevel                              '),
+        (N'XpoConnectCarrierServices', N'dbo       ', N'LoyaltyNotification                       '),
+        (N'XPOMaster                ', N'dbo       ', N'Note                                      '),
+        (N'XPOMaster                ', N'dbo       ', N'NoteType                                  '),
+        (N'XpoMaster                ', N'dbo       ', N'OfficeLocation                            '),
+        (N'PartnerMaster            ', N'dbo       ', N'PartnerGroup                              '),
+        (N'PartnerMaster            ', N'dbo       ', N'PartnerGroupUser                          '),
+        (N'Pay                      ', N'dbo       ', N'PartnerPay	Partner                        '),
+        (N'Pay                      ', N'dbo       ', N'PartnerPayRun	Partner                     '),
+        (N'Pay                      ', N'dbo       ', N'PartnerPayService	Partner                 '),
+        (N'Pay                      ', N'dbo       ', N'PartnerPayServicePricing	Partner          '),
+        (N'PartnerMaster            ', N'dbo       ', N'Partners                                  '),
+        (N'XpoMaster                ', N'dbo       ', N'ReportingCode                             '),
+        (N'XpoMaster                ', N'dbo       ', N'Requirement                               '),
+        (N'XpoMaster                ', N'dbo       ', N'RequirementParameter                      '),
+        (N'XpoMaster                ', N'dbo       ', N'RescheduledTripCodes                      '),
+        (N'PartnerMaster            ', N'dbo       ', N'SubAccounts                               '),
+        (N'XpoWood                  ', N'dbo       ', N'tender                                    '),
+        (N'XpoWood                  ', N'dbo       ', N'tenderstatus                              '),
+        (N'XPOMaster                ', N'dbo       ', N'TrackingService                           '),
+        (N'XpoMaster                ', N'dbo       ', N'TripILA                                   '),
+        (N'PartnerMaster            ', N'dbo       ', N'UserRoles                                 '),
+        (N'PartnerMaster            ', N'dbo       ', N'Users                                     '),
+        (N'XpoMaster                ', N'edi       ', N'OrderRequest                              '),
+        (N'XpoMaster                ', N'edi       ', N'StopRequest                               '),
+        (N'XpoMaster                ', N'locale    ', N'Address                                   '),
+        (N'XpoMaster                ', N'locale    ', N'City                                      '),
+        (N'XpoMaster                ', N'locale    ', N'Country                                   '),
+        (N'XPOMaster                ', N'locale    ', N'PortOfEntry                               '),
+        (N'XpoMaster                ', N'locale    ', N'State                                     '),
+        (N'XpoMaster                ', N'locale    ', N'Zip                                       '),
+        (N'XpoMaster                ', N'orders    ', N'AssignHistory                             '),
+        (N'XPOMaster                ', N'orders    ', N'AssignHistory                             '),
+        (N'XPOMaster                ', N'orders    ', N'CallIn                                    '),
+        (N'XPOMaster                ', N'orders    ', N'CallInException                           '),
+        (N'XpoMaster                ', N'orders    ', N'FOBazookaOrderMapping                     '),
+        (N'XPOMaster                ', N'orders    ', N'FreightClassType                          '),
+        (N'XPOMaster                ', N'orders    ', N'Offer                                     '),
+        (N'XpoMaster                ', N'orders    ', N'Order                                     '),
+        (N'XPOMaster                ', N'orders    ', N'OrderAuditHistory                         '),
+        (N'XPOMaster                ', N'orders    ', N'OrderAutoRate                             '),
+        (N'XpoMaster                ', N'orders    ', N'OrderCharge                               '),
+        (N'XpoMaster                ', N'orders    ', N'OrderCommodity                            '),
+        (N'XPOMaster                ', N'orders    ', N'OrderDrayage                              '),
+        (N'XpoMaster                ', N'orders    ', N'orderprepayment                           '),
+        (N'XpoMaster                ', N'Orders    ', N'OrderReferenceNumber                      '),
+        (N'XpoMaster                ', N'orders    ', N'OrderSalesRep                             '),
+        (N'XpoMaster                ', N'orders    ', N'OrderStatusType                           '),
+        (N'XpoMaster                ', N'orders    ', N'OrderTrip                                 '),
+        (N'XPOMaster                ', N'orders    ', N'QuickQuoteBolContact                      '),
+        (N'XPOMaster                ', N'orders    ', N'RateConfirmationContact                   '),
+        (N'XpoMaster                ', N'orders    ', N'RescheduledTrip                           '),
+        (N'XpoMaster                ', N'orders    ', N'ServiceFailure                            '),
+        (N'XpoMaster                ', N'orders    ', N'ServiceType                               '),
+        (N'XPOMaster                ', N'orders    ', N'ServiceType                               '),
+        (N'XpoMaster                ', N'orders    ', N'SourceType                                '),
+        (N'XPOMaster                ', N'orders    ', N'SteamshipLine                             '),
+        (N'XpoMaster                ', N'orders    ', N'Stop                                      '),
+        (N'XpoMaster                ', N'orders    ', N'StopReferenceNumber                       '),
+        (N'XpoMaster                ', N'orders    ', N'StopType                                  '),
+        (N'XPOMaster                ', N'orders    ', N'Tracking                                  '),
+        (N'XpoMaster                ', N'orders    ', N'Trip                                      '),
+        (N'XpoMaster                ', N'orders    ', N'TripBrokerageStatusType                   '),
+        (N'XpoMaster                ', N'orders    ', N'TripDeduction                             '),
+        (N'XPOMaster                ', N'orders    ', N'TripILA                                   '),
+        (N'StagingBrokerage         ', N'reference ', N'FWMkts                                    '),
+        (N'StagingBrokerage         ', N'reference ', N'ZipArea                                   '),
+        (N'XpoMaster                ', N'security  ', N'CommissionPlan                            '),
+        (N'XpoMaster                ', N'security  ', N'department                                '),
+        (N'XpoMaster                ', N'security  ', N'Salesperson                               '),
+        (N'XpoMaster                ', N'security  ', N'User                                      '),
+        (N'XpoMaster                ', N'security  ', N'user_role                                 '),
+        (N'XPOMaster                ', N'security  ', N'UserLogin                                 '),
+        (N'XPOMaster                ', N'security  ', N'UserLookupPermission                      '),
+        (N'XPOMaster                ', N'security  ', N'UserPhoneAssignment                       '),
+        (N'StagingBrokerage         ', N'staging   ', N'CustomerPricingDWH                        '),
+        (N'CorpINTG                 ', N'xpo       ', N'pvt -                                     '),
+        (N'WarehouseConnect         ', N'staging   ', N'XPOConnectPayload                         '),
+        (N'WarehouseConnect         ', N'staging   ', N'XPODrivePayload                           '),
+        (N'XPOMaster                ', N'tms       ', N'Contact                                   '),
+        (N'XPOMaster                ', N'tms       ', N'Document                                  '),
+        (N'XPOMaster                ', N'tms       ', N'GeographicLocation                        '),
+        (N'XpoMaster                ', N'TMS       ', N'PaymentTerms                              '),
+        (N'XPOMaster                ', N'truck     ', N'AvailableTruck                            '),
+        (N'XPOMaster                ', N'truck     ', N'truck                                     '),
+        (N'XPOMaster                ', N'truck     ', N'truckactivity                             '),
+        (N'XPOMaster                ', N'truck     ', N'TruckLocation                             '),
+        (N'XPOMaster                ', N'truck     ', N'TruckMatch                                '),
+        (N'XPOMaster                ', N'truck     ', N'TruckMatchNotification                    '),
+        (N'XPOMaster                ', N'truck     ', N'TruckMultipleDestination                  '),
+        (N'XPOMaster                ', N'truck     ', N'TruckRecurrence                           ')
+    ) v(DatabaseName, SchemaName, TableName)
+),
+
+/* === Catálogo de XpoMaster === */
+xpomaster_cols AS (
+    SELECT 
+        DB      = N'XpoMaster',
+        s.name  AS [Schema],
+        t.name  AS [Table],
+        c.name  AS column_id
+    FROM [XpoMaster].sys.tables t
+    JOIN [XpoMaster].sys.schemas s ON s.schema_id = t.schema_id
+    JOIN [XpoMaster].sys.columns c ON c.object_id = t.object_id
+    WHERE c.name LIKE N'%Id'
+),
+xpomaster_pk_cols AS (
+    SELECT 
+        s.name AS [Schema],
+        t.name AS [Table],
+        c.name AS column_id
+    FROM [XpoMaster].sys.tables t
+    JOIN [XpoMaster].sys.schemas s ON s.schema_id = t.schema_id
+    JOIN [XpoMaster].sys.key_constraints kc
+      ON kc.parent_object_id = t.object_id AND kc.type = 'PK'
+    JOIN [XpoMaster].sys.index_columns ic
+      ON ic.object_id = t.object_id AND ic.index_id = kc.unique_index_id
+    JOIN [XpoMaster].sys.columns c
+      ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+),
+xpomaster_pick AS (
+    SELECT 
+        x.DB AS [Database], 
+        x.[Schema], 
+        x.[Table], 
+        x.column_id,
+        is_pk = CASE WHEN p.column_id IS NOT NULL THEN 1 ELSE 0 END
+    FROM xpomaster_cols x
+    JOIN todo td
+      ON td.DatabaseName = N'XpoMaster'
+     AND td.SchemaName   = x.[Schema]
+     AND td.TableName    = x.[Table]
+    LEFT JOIN xpomaster_pk_cols p
+      ON p.[Schema] = x.[Schema]
+     AND p.[Table]  = x.[Table]
+     AND p.column_id = x.column_id
+),
+
+/* === Catálogo de brkLTL === */
+brkltl_cols AS (
+    SELECT 
+        DB      = N'brkLTL',
+        s.name  AS [Schema],
+        t.name  AS [Table],
+        c.name  AS column_id
+    FROM [brkLTL].sys.tables t
+    JOIN [brkLTL].sys.schemas s ON s.schema_id = t.schema_id
+    JOIN [brkLTL].sys.columns c ON c.object_id = t.object_id
+    WHERE c.name LIKE N'%Id'
+),
+brkltl_pk_cols AS (
+    SELECT 
+        s.name AS [Schema],
+        t.name AS [Table],
+        c.name AS column_id
+    FROM [brkLTL].sys.tables t
+    JOIN [brkLTL].sys.schemas s ON s.schema_id = t.schema_id
+    JOIN [brkLTL].sys.key_constraints kc
+      ON kc.parent_object_id = t.object_id AND kc.type = 'PK'
+    JOIN [brkLTL].sys.index_columns ic
+      ON ic.object_id = t.object_id AND ic.index_id = kc.unique_index_id
+    JOIN [brkLTL].sys.columns c
+      ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+),
+brkltl_pick AS (
+    SELECT 
+        b.DB AS [Database], 
+        b.[Schema], 
+        b.[Table], 
+        b.column_id,
+        is_pk = CASE WHEN p.column_id IS NOT NULL THEN 1 ELSE 0 END
+    FROM brkltl_cols b
+    JOIN todo td
+      ON td.DatabaseName = N'brkLTL'
+     AND td.SchemaName   = b.[Schema]
+     AND td.TableName    = b.[Table]
+    LEFT JOIN brkltl_pk_cols p
+      ON p.[Schema] = b.[Schema]
+     AND p.[Table]  = b.[Table]
+     AND p.column_id = b.column_id
+),
+
+/* === Catálogo de XPOCustomer (opcional: quita si no corresponde) === */
+xpocustomer_cols AS (
+    SELECT 
+        DB      = N'XPOCustomer',
+        s.name  AS [Schema],
+        t.name  AS [Table],
+        c.name  AS column_id
+    FROM [XPOCustomer].sys.tables t
+    JOIN [XPOCustomer].sys.schemas s ON s.schema_id = t.schema_id
+    JOIN [XPOCustomer].sys.columns c ON c.object_id = t.object_id
+    WHERE c.name LIKE N'%Id'
+),
+xpocustomer_pk_cols AS (
+    SELECT 
+        s.name AS [Schema],
+        t.name AS [Table],
+        c.name AS column_id
+    FROM [XPOCustomer].sys.tables t
+    JOIN [XPOCustomer].sys.schemas s ON s.schema_id = t.schema_id
+    JOIN [XPOCustomer].sys.key_constraints kc
+      ON kc.parent_object_id = t.object_id AND kc.type = 'PK'
+    JOIN [XPOCustomer].sys.index_columns ic
+      ON ic.object_id = t.object_id AND ic.index_id = kc.unique_index_id
+    JOIN [XPOCustomer].sys.columns c
+      ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+),
+xpocustomer_pick AS (
+    SELECT 
+        x.DB AS [Database], 
+        x.[Schema], 
+        x.[Table], 
+        x.column_id,
+        is_pk = CASE WHEN p.column_id IS NOT NULL THEN 1 ELSE 0 END
+    FROM xpocustomer_cols x
+    JOIN todo td
+      ON td.DatabaseName = N'XPOCustomer'
+     AND td.SchemaName   = x.[Schema]
+     AND td.TableName    = x.[Table]
+    LEFT JOIN xpocustomer_pk_cols p
+      ON p.[Schema] = x.[Schema]
+     AND p.[Table]  = x.[Table]
+     AND p.column_id = x.column_id
+),
+
+/* === Unión final === */
+final AS (
+    SELECT * FROM xpomaster_pick
+    UNION ALL
+    SELECT * FROM brkltl_pick
+    UNION ALL
+    SELECT * FROM xpocustomer_pick
+)
+
+SELECT [Database], [Schema], [Table], column_id, is_pk
+FROM final
+ORDER BY [Database], [Schema], [Table], column_id;
