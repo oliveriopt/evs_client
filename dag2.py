@@ -65,14 +65,19 @@ def extract_and_process_metadata(**context):
     context["ti"].xcom_push(key="metadata_rows", value=rows_dicts)
 
 
-# === TASK 2: Construir T-SQL usando el DataFrame y ejecutarla en SQL Server ===
+# === TASK 2: Construir T-SQL dinámica (con total_rows) y ejecutarla en SQL Server ===
 def build_and_run_sqlserver_query(**context):
     """
     1) Pulls metadata from XCom.
     2) Construye dinámicamente el bloque VALUES de todo_raw
        a partir de (database_name, schema_name, table_name).
-    3) Inyecta ese VALUES en la T-SQL abstracta (todo_raw).
-    4) Ejecuta la T-SQL en SQL Server vía pymssql y, si hay resultset, lo carga en un DataFrame.
+    3) Inyecta ese VALUES en la T-SQL abstracta.
+    4) En cada database construye:
+       - cols: columnas cuyo nombre termina en 'Id'
+       - pk_cols: columnas que forman PK
+       - row_counts: rowcount por tabla usando sys.partitions
+       - pick: cruza todo y añade is_pk + total_rows
+    5) Ejecuta la T-SQL en SQL Server y carga el resultset en un DataFrame.
     """
 
     ti = context["ti"]
@@ -118,9 +123,12 @@ def build_and_run_sqlserver_query(**context):
 
     values_clause = ",\n        ".join(values_rows)
 
-    # T-SQL abstracta con VALUES inyectado desde el DataFrame
+    # T-SQL abstracta con:
+    #   - todo_raw desde BQ (VALUES dinámico)
+    #   - row_counts por tabla usando sys.partitions
+    #   - salida: Database, Schema, Table, column_id, is_pk, total_rows
     final_tsql = f"""
-/* === 1) Lista objetivo (Database, Schema, Table) === */
+/* === 1) Lista objetivo (Database, Schema, Table) desde BigQuery === */
 WITH todo_raw (DatabaseName, SchemaName, TableName) AS (
     SELECT *
     FROM (VALUES
@@ -180,13 +188,26 @@ pk_cols AS (
     JOIN [' + d.DatabaseName + '].sys.columns c
       ON c.object_id = ic.object_id AND c.column_id = ic.column_id
 ),
+row_counts AS (
+    SELECT
+        s.name AS [Schema],
+        t.name AS [Table],
+        total_rows = SUM(p.[rows])
+    FROM [' + d.DatabaseName + '].sys.tables t
+    JOIN [' + d.DatabaseName + '].sys.schemas s ON s.schema_id = t.schema_id
+    JOIN [' + d.DatabaseName + '].sys.partitions p
+      ON p.object_id = t.object_id
+    WHERE p.index_id IN (0, 1)
+    GROUP BY s.name, t.name
+),
 pick AS (
     SELECT 
         cols.DB      AS [Database],
         cols.[Schema],
         cols.[Table],
         cols.column_id,
-        is_pk = CASE WHEN pk_cols.column_id IS NOT NULL THEN 1 ELSE 0 END
+        is_pk     = CASE WHEN pk_cols.column_id IS NOT NULL THEN 1 ELSE 0 END,
+        total_rows = rc.total_rows
     FROM cols
     JOIN #todo td
       ON td.DatabaseName = cols.DB
@@ -196,8 +217,11 @@ pick AS (
       ON pk_cols.[Schema]   = cols.[Schema]
      AND pk_cols.[Table]    = cols.[Table]
      AND pk_cols.column_id  = cols.column_id
+    LEFT JOIN row_counts rc
+      ON rc.[Schema] = cols.[Schema]
+     AND rc.[Table]  = cols.[Table]
 )
-SELECT [Database], [Schema], [Table], column_id, is_pk
+SELECT [Database], [Schema], [Table], column_id, is_pk, total_rows
 FROM pick'
     FROM (
         SELECT DISTINCT DatabaseName
@@ -242,7 +266,7 @@ DROP TABLE #todo;
             if rows:
                 columns = [col[0] for col in cursor.description]
                 df_pk = pd.DataFrame.from_records(rows, columns=columns)
-                print("Result from SQL Server dynamic PK/Id catalog:")
+                print("Result from SQL Server dynamic PK/Id catalog (with total_rows):")
                 print(df_pk.head())
                 print(f"Total rows from SQL Server: {len(df_pk)}")
             else:
@@ -257,11 +281,11 @@ DROP TABLE #todo;
 
 # === Definición del DAG ===
 with DAG(
-    dag_id="bq_to_sqlserver_pk_catalog_pymssql_dynamic_from_bq_v1",
+    dag_id="bq_to_sqlserver_pk_catalog_pymssql_dynamic_with_counts_v1",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
     schedule=None,
-    tags=["bigquery", "metadata", "sqlserver", "pk_catalog", "dynamic"],
+    tags=["bigquery", "metadata", "sqlserver", "pk_catalog", "dynamic", "rowcount"],
 ) as dag:
 
     extract_metadata_task = PythonOperator(
