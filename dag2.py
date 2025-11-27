@@ -62,16 +62,17 @@ def extract_and_process_metadata(**context):
         print(df.head())
         print(f"Total rows: {len(df)}")
 
-    # Push list[dict] to XCom for the next task
     context["ti"].xcom_push(key="metadata_rows", value=rows_dicts)
 
 
-# === TASK 2: Filtrar solo XpoMaster, construir query y ejecutarla en SQL Server (pymssql) ===
+# === TASK 2: Construir T-SQL usando el DataFrame y ejecutarla en SQL Server ===
 def build_and_run_sqlserver_query(**context):
     """
-    Pulls metadata from XCom, filters only database_name = 'XpoMaster',
-    builds a T-SQL query (based on query1) using that metadata,
-    executes it on SQL Server using pymssql, and loads the result into a DataFrame.
+    1) Pulls metadata from XCom.
+    2) Construye dinámicamente el bloque VALUES de todo_raw
+       a partir de (database_name, schema_name, table_name).
+    3) Inyecta ese VALUES en la T-SQL abstracta (todo_raw).
+    4) Ejecuta la T-SQL en SQL Server vía pymssql y, si hay resultset, lo carga en un DataFrame.
     """
 
     ti = context["ti"]
@@ -88,112 +89,166 @@ def build_and_run_sqlserver_query(**context):
     print("Full metadata from BigQuery:")
     print(df_meta.head())
 
-    # --- Filtro SOLO XpoMaster ---
-    df_meta = df_meta[df_meta["database_name"] == "XpoMaster"].copy()
+    # Limpiamos filas sin database/schema/table
+    df_meta = df_meta.dropna(subset=["database_name", "schema_name", "table_name"]).copy()
 
     if df_meta.empty:
-        print("No rows with database_name = 'XpoMaster'. Nothing to do.")
+        print("No valid rows with non-null database/schema/table. Nothing to do.")
         return
 
-    print("Filtered metadata (database_name = 'XpoMaster'):")
-    print(df_meta.head())
-    # ------------------------------
-
-    # 1) Construir VALUES (...) para input_rows a partir del DataFrame filtrado
+    # Construimos VALUES (...) para todo_raw en base al DataFrame
     values_rows = []
     for _, row in df_meta.iterrows():
-        db  = (row.get("database_name") or "").replace("'", "''")
-        sch = (row.get("schema_name")   or "").replace("'", "''")
-        tbl = (row.get("table_name")    or "").replace("'", "''")
-        # Column y is_pk_flag: placeholders por ahora
+        db  = str(row["database_name"]).strip()
+        sch = str(row["schema_name"]).strip()
+        tbl = str(row["table_name"]).strip()
+
+        # Escapar comillas simples para T-SQL Unicode N'...'
+        db_escaped  = db.replace("'", "''")
+        sch_escaped = sch.replace("'", "''")
+        tbl_escaped = tbl.replace("'", "''")
+
         values_rows.append(
-            f"(N'{db}', N'{sch}', N'{tbl}', N'', N'0')"
+            f"(N'{db_escaped}', N'{sch_escaped}', N'{tbl_escaped}')"
         )
 
     if not values_rows:
-        print("No valid rows to build VALUES clause after filtering by XpoMaster.")
+        print("No rows to build VALUES clause from metadata.")
         return
 
     values_clause = ",\n        ".join(values_rows)
 
-    # 2) Construir pk_catalog a partir de databases únicas (ya filtradas a XpoMaster)
-    db_names = sorted(
-        {row["database_name"] for _, row in df_meta.iterrows() if row.get("database_name")}
-    )
-    if not db_names:
-        print("No database_name values found after filtering.")
-        return
-
-    select_fragments = []
-    for db in db_names:
-        db_escaped = db.replace("'", "''")
-        fragment = f"""
-SELECT
-    DBName   = N'{db_escaped}',
-    SchemaPk = s.name,
-    TablePk  = t.name,
-    ColumnPk = c.name
-FROM [{db_escaped}].sys.tables t
-JOIN [{db_escaped}].sys.schemas s
-  ON s.schema_id = t.schema_id
-JOIN [{db_escaped}].sys.key_constraints kc
-  ON kc.parent_object_id = t.object_id
- AND kc.type = 'PK'
-JOIN [{db_escaped}].sys.index_columns ic
-  ON ic.object_id = t.object_id
- AND ic.index_id = kc.unique_index_id
-JOIN [{db_escaped}].sys.columns c
-  ON c.object_id = ic.object_id
- AND c.column_id = ic.column_id
-"""
-        select_fragments.append(fragment.strip())
-
-    pk_catalog_part = "\nUNION ALL\n".join(select_fragments)
-
-    # 3) Query final estilo query1, pero generada desde el DataFrame filtrado
+    # T-SQL abstracta con VALUES inyectado desde el DataFrame
     final_tsql = f"""
-WITH input_rows AS (
+/* === 1) Lista objetivo (Database, Schema, Table) === */
+WITH todo_raw (DatabaseName, SchemaName, TableName) AS (
     SELECT *
     FROM (VALUES
         {values_clause}
-    ) v([Database],[Schema],[Table],[Column],[is_pk_flag])
-),
-rows_0 AS (
-    SELECT [Database],[Schema],[Table],[Column]
-    FROM input_rows
-    WHERE is_pk_flag = N'0'
-),
-pk_catalog AS (
-{pk_catalog_part}
+    ) v(DatabaseName, SchemaName, TableName)
 )
-SELECT * FROM pk_catalog;
+SELECT
+    DatabaseName = LTRIM(RTRIM(DatabaseName)),
+    SchemaName   = LTRIM(RTRIM(SchemaName)),
+    TableName    = LTRIM(RTRIM(TableName))
+INTO #todo
+FROM todo_raw;
+
+-- Por seguridad, evita duplicados exactos
+WITH t AS (
+    SELECT DISTINCT DatabaseName, SchemaName, TableName
+    FROM #todo
+)
+DELETE FROM #todo;
+
+INSERT INTO #todo (DatabaseName, SchemaName, TableName)
+SELECT DatabaseName, SchemaName, TableName
+FROM t;
+
+
+DECLARE @sql NVARCHAR(MAX) = N'';
+
+-- === 2) Construimos dinámicamente, por cada DatabaseName distinto ===
+SELECT
+    @sql = STRING_AGG(BlockSql, CHAR(10) + 'UNION ALL' + CHAR(10))
+FROM (
+    SELECT
+        d.DatabaseName,
+        BlockSql =
+N';WITH cols AS (
+    SELECT 
+        DB      = N''' + d.DatabaseName + ''',
+        s.name  AS [Schema],
+        t.name  AS [Table],
+        c.name  AS column_id
+    FROM [' + d.DatabaseName + '].sys.tables t
+    JOIN [' + d.DatabaseName + '].sys.schemas s ON s.schema_id = t.schema_id
+    JOIN [' + d.DatabaseName + '].sys.columns c ON c.object_id = t.object_id
+    WHERE c.name LIKE N''%Id''
+),
+pk_cols AS (
+    SELECT 
+        s.name AS [Schema],
+        t.name AS [Table],
+        c.name AS column_id
+    FROM [' + d.DatabaseName + '].sys.tables t
+    JOIN [' + d.DatabaseName + '].sys.schemas s ON s.schema_id = t.schema_id
+    JOIN [' + d.DatabaseName + '].sys.key_constraints kc
+      ON kc.parent_object_id = t.object_id AND kc.type = ''PK''
+    JOIN [' + d.DatabaseName + '].sys.index_columns ic
+      ON ic.object_id = t.object_id AND ic.index_id = kc.unique_index_id
+    JOIN [' + d.DatabaseName + '].sys.columns c
+      ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+),
+pick AS (
+    SELECT 
+        cols.DB      AS [Database],
+        cols.[Schema],
+        cols.[Table],
+        cols.column_id,
+        is_pk = CASE WHEN pk_cols.column_id IS NOT NULL THEN 1 ELSE 0 END
+    FROM cols
+    JOIN #todo td
+      ON td.DatabaseName = cols.DB
+     AND td.SchemaName   = cols.[Schema]
+     AND td.TableName    = cols.[Table]
+    LEFT JOIN pk_cols
+      ON pk_cols.[Schema]   = cols.[Schema]
+     AND pk_cols.[Table]    = cols.[Table]
+     AND pk_cols.column_id  = cols.column_id
+)
+SELECT [Database], [Schema], [Table], column_id, is_pk
+FROM pick'
+    FROM (
+        SELECT DISTINCT DatabaseName
+        FROM #todo
+    ) d
+) AS q;
+
+-- Si no hay nada, abortamos limpio
+IF @sql IS NULL OR LEN(@sql) = 0
+BEGIN
+    RAISERROR('No databases found in #todo.', 16, 1);
+    RETURN;
+END;
+
+-- === 3) Ejecutamos todo unido y ordenado ===
+SET @sql = @sql + CHAR(10) + 'ORDER BY [Database], [Schema], [Table], column_id;';
+
+PRINT @sql; -- opcional, para debug
+
+EXEC sys.sp_executesql @sql;
+
+DROP TABLE #todo;
 """
 
     print("Final T-SQL to be executed on SQL Server:")
     print(final_tsql)
 
-    # 4) Ejecutar en SQL Server con pymssql y cargar a DataFrame
+    # 4) Ejecutar en SQL Server con pymssql
     conn = None
     try:
         conn = pymssql.connect(
             server="fbtdw2090.qaamer.qacorp.xpo.com",
             user="svcGCPDataEngg",
             password="OXZ6q67wr77k",
-            database="XpoMaster",  # DB inicial; la query usa [XpoMaster].sys.xxx
+            database="XpoMaster",  # DB inicial; la T-SQL accede al resto via [DatabaseName].sys.*
         )
         cursor = conn.cursor()
         cursor.execute(final_tsql)
-        rows = cursor.fetchall()
 
-        columns = [col[0] for col in cursor.description]
-        df_pk = pd.DataFrame.from_records(rows, columns=columns)
-
-        print("Result from SQL Server PK catalog (XpoMaster only):")
-        print(df_pk.head())
-        print(f"Total rows from SQL Server: {len(df_pk)}")
-
-        # Opcional: mandar el resultado a XCom
-        # ti.xcom_push(key="pk_catalog", value=df_pk.to_dict(orient="records"))
+        try:
+            rows = cursor.fetchall()
+            if rows:
+                columns = [col[0] for col in cursor.description]
+                df_pk = pd.DataFrame.from_records(rows, columns=columns)
+                print("Result from SQL Server dynamic PK/Id catalog:")
+                print(df_pk.head())
+                print(f"Total rows from SQL Server: {len(df_pk)}")
+            else:
+                print("No rows returned by the dynamic T-SQL.")
+        except pymssql.ProgrammingError:
+            print("No resultset to fetch (EXEC may have printed only).")
 
     finally:
         if conn is not None:
@@ -202,22 +257,11 @@ SELECT * FROM pk_catalog;
 
 # === Definición del DAG ===
 with DAG(
-    dag_id="bq_to_sqlserver_pk_catalog_pymssql_xpomaster_v1",
+    dag_id="bq_to_sqlserver_pk_catalog_pymssql_dynamic_from_bq_v1",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
-    schedule=None,  # solo manual
-    tags=["bigquery", "metadata", "sqlserver", "pk_catalog", "XpoMaster"],
-    doc_md="""
-    ### DAG: BigQuery metadata → dynamic PK catalog in SQL Server (pymssql, XpoMaster only)
-
-    1) Extracts `database_name`, `schema_name`, `table_name` from
-       `dataops_admin.extraction_metadata` in BigQuery.
-    2) Filters rows to `database_name = 'XpoMaster'`.
-    3) Builds a dynamic T-SQL query (based on the original query1)
-       using that metadata to inspect PKs in XpoMaster.
-    4) Executes the query on SQL Server via `pymssql`.
-    5) Loads the result into a Pandas DataFrame (printed in logs).
-    """,
+    schedule=None,
+    tags=["bigquery", "metadata", "sqlserver", "pk_catalog", "dynamic"],
 ) as dag:
 
     extract_metadata_task = PythonOperator(
@@ -227,7 +271,7 @@ with DAG(
     )
 
     run_sqlserver_pk_task = PythonOperator(
-        task_id="build_and_run_sqlserver_pk_query_xpomaster",
+        task_id="build_and_run_sqlserver_pk_query_dynamic",
         python_callable=build_and_run_sqlserver_query,
         provide_context=True,
     )
