@@ -75,7 +75,7 @@ def extract_and_process_metadata(**context):
 
 
 with DAG(
-    dag_id="bq_metadata_sqlserver_extraction_v3",
+    dag_id="bq_metadata_sqlserver_extraction_v4",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
     schedule=None,  # Solo se ejecuta manualmente
