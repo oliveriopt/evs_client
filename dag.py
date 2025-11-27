@@ -17,13 +17,14 @@ def extract_and_process_metadata(**context):
     # Using 'google_cloud_default' gcp_conn_id is standard in Composer.
     # Ensure your Composer service account has permissions to read the BigQuery table.
     bq_hook = BigQueryHook(
-        project_id='rxo-dataeng-datalake-uat',  # Your GCP Project ID
-        gcp_conn_id='google_cloud_default'     # Your Airflow GCP Connection ID
+        project_id="rxo-dataeng-datalake-np",  # Your GCP Project ID
+        gcp_conn_id="google_cloud_default",     # Your Airflow GCP Connection ID
+        location="us-central1"
     )
 
     # Define the BigQuery table and filter conditions
     # The table is 'rxo-dataeng-datalake-uat.dataops_admin.extraction_metadata'
-    table_id = 'rxo-dataeng-datalake-uat.dataops_admin.extraction_metadata'
+    table_id = 'rxo-dataeng-datalake-np.dataops_admin.extraction_metadata'
     source_type_filter = 'sqlserver'
     table_type_filter = 'extraction'
 
@@ -80,7 +81,7 @@ def extract_and_process_metadata(**context):
 
 
 with DAG(
-    dag_id="bq_metadata_sqlserver_extraction",
+    dag_id="bq_metadata_sqlserver_extraction_v1",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,         # Do not run caught-up DAG runs if activated after start_date
     schedule=None,         # IMPORTANT: This makes the DAG run only when triggered manually
@@ -94,10 +95,9 @@ with DAG(
     """,
 ) as dag:
     extract_metadata_task = PythonOperator(
-        task_id="extract_and_process_sqlserver_metadata",
+        task_id="extract_and_process_sqlserver_metadata_v3",
         python_callable=extract_and_process_metadata,
         # The python_callable function receives Airflow arguments (ti, dag_run, etc.)
         # You can add op_kwargs if your python_callable function needs specific arguments.
     )
 
-    
