@@ -1,5 +1,0 @@
-2025-11-25 16:23:01.466 CLST
-Timeout in polling result file: gs://rxo-dataeng-datalake-np-dataflow/staging/template_launches/2025-11-25_11_10_13-4211063899742046480/operation_result.
-Service account: ds-dataflow-dataeng-gsa@rxo-dataeng-datalake-np.iam.gserviceaccount.com
-Image URL: us-central1-docker.pkg.dev/rxo-dataeng-datalake-np/dataflow-flex-template/sql-to-bq-op:latest
-Troubleshooting guide at https://cloud.google.com/dataflow/docs/guides/troubleshoot-templates#timeout-polling
