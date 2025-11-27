@@ -19,11 +19,11 @@ def extract_and_process_metadata(**context):
     bq_hook = BigQueryHook(
         project_id="rxo-dataeng-datalake-np",   # GCP Project ID
         gcp_conn_id="google_cloud_default",     # Airflow GCP Connection ID
-        location="US",                 # BigQuery dataset location
+        location="us-central1",                 # BigQuery dataset location
     )
 
-    # BigQuery dataset.table (sin el project, el hook ya lo conoce)
-    table_id = "dataops_admin.extraction_metadata"
+    # BigQuery dataset.table
+    table_id = "rxo-dataeng-datalake-np.dataops_admin.extraction_metadata"
     source_type_filter = "sqlserver"
     table_type_filter = "extraction"
 
@@ -44,7 +44,10 @@ def extract_and_process_metadata(**context):
     print(f"Executing BigQuery SQL Query:\n{sql_query}")
 
     try:
-        results = bq_hook.get_records(sql=sql_query)
+        # Usamos el cliente nativo de BigQuery en lugar de get_records()
+        client = bq_hook.get_client()
+        job = client.query(sql_query, location="us-central1")
+        rows = list(job.result())  # esto bloquea hasta que termina el job
     except AirflowException as e:
         print(f"Airflow Exception while executing BigQuery query: {e}")
         raise
@@ -52,17 +55,10 @@ def extract_and_process_metadata(**context):
         print(f"An unexpected error occurred while executing BigQuery query: {e}")
         raise
 
-    # get_records devuelve una lista de tuplas; definimos columnas explícitamente
-    df = pd.DataFrame(
-        results,
-        columns=[
-            "source_type",
-            "table_type",
-            "database_name",
-            "schema_name",
-            "table_name",
-        ],
-    )
+    # rows es una lista de Row; lo convertimos a dict para Pandas
+    rows_dicts = [dict(r) for r in rows]
+
+    df = pd.DataFrame(rows_dicts)
 
     if df.empty:
         print("No records found matching the criteria.")
@@ -71,7 +67,7 @@ def extract_and_process_metadata(**context):
         print(df.head())
         print(f"Total rows: {len(df)}")
 
-    # Ejemplo si quisieras empujar algo a XCom (cuidado con el tamaño)
+    # Si quisieras XCom:
     # context["ti"].xcom_push(
     #     key="extracted_metadata_df_head",
     #     value=df.head().to_json(orient="records"),
@@ -84,14 +80,6 @@ with DAG(
     catchup=False,
     schedule=None,  # Solo se ejecuta manualmente
     tags=["bigquery", "metadata", "sqlserver", "extraction"],
-    doc_md="""
-    ### DAG for SQL Server Metadata Extraction from BigQuery
-
-    This DAG connects to BigQuery, queries the `extraction_metadata` table
-    for SQL Server records, extracts key information from `source_config`
-    (`database_name`, `schema_name`, `table_name`), and organizes it into
-    a Pandas DataFrame. Designed to be triggered manually.
-    """,
 ) as dag:
 
     extract_metadata_task = PythonOperator(
