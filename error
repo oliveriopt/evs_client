@@ -1,17 +1,39 @@
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/providers/google/cloud/hooks/bigquery.py", line 1722, in _run_query
-    job = self.hook.insert_job(configuration=configuration, project_id=self.project_id, location=location)
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/providers/google/common/hooks/base_google.py", line 531, in inner_wrapper
+
+Task failed with exception
+Traceback (most recent call last):
+  File "src/pymssql/_pymssql.pyx", line 447, in pymssql._pymssql.Cursor.execute
+  File "src/pymssql/_mssql.pyx", line 1125, in pymssql._mssql.MSSQLConnection.execute_query
+  File "src/pymssql/_mssql.pyx", line 1157, in pymssql._mssql.MSSQLConnection.execute_query
+  File "src/pymssql/_mssql.pyx", line 1379, in pymssql._mssql.MSSQLConnection.get_result
+  File "src/pymssql/_mssql.pyx", line 1855, in pymssql._mssql.check_cancel_and_raise
+  File "src/pymssql/_mssql.pyx", line 1901, in pymssql._mssql.raise_MSSQLDatabaseException
+pymssql._mssql.MSSQLDatabaseException: (208, b"Invalid object name 't'.DB-Lib error message 20018, severity 16:\nGeneral SQL Server error: Check messages from the SQL Server\n")
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/python3.11/lib/python3.11/site-packages/airflow/models/taskinstance.py", line 768, in _execute_task
+    result = _execute_callable(context=context, **execute_callable_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/python3.11/lib/python3.11/site-packages/airflow/models/taskinstance.py", line 734, in _execute_callable
+    return ExecutionCallableRunner(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/python3.11/lib/python3.11/site-packages/airflow/utils/operator_helpers.py", line 252, in run
+    return self.func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/python3.11/lib/python3.11/site-packages/airflow/models/baseoperator.py", line 415, in wrapper
     return func(self, *args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/providers/google/cloud/hooks/bigquery.py", line 1278, in insert_job
-    job_api_repr.result(timeout=timeout, retry=retry)
-  File "/opt/python3.11/lib/python3.11/site-packages/google/cloud/bigquery/job/query.py", line 1681, in result
-    while not is_job_done():
-              ^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/google/cloud/bigquery/job/query.py", line 1630, in is_job_done
-    raise job_failed_exception
-google.api_core.exceptions.NotFound: 404 Not found: Dataset rxo-dataeng-datalake-np:`dataops_admin was not found in location US; reason: notFound, message: Not found: Dataset rxo-dataeng-datalake-np:`dataops_admin was not found in location US
-
-Location: US
-Job ID: airflow_1764257343719144_e683402674de25d9672f4aa7b9023d41
+  File "/opt/python3.11/lib/python3.11/site-packages/airflow/operators/python.py", line 238, in execute
+    return_value = self.execute_callable()
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/python3.11/lib/python3.11/site-packages/airflow/operators/python.py", line 256, in execute_callable
+    return runner.run(*self.op_args, **self.op_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/python3.11/lib/python3.11/site-packages/airflow/utils/operator_helpers.py", line 252, in run
+    return self.func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/gcs/dags/09_op_dag_lookuptable_v2.py", line 304, in build_and_run_sqlserver_query
+    cursor.execute(pk_tsql)
+  File "src/pymssql/_pymssql.pyx", line 462, in pymssql._pymssql.Cursor.execute
+pymssql.exceptions.ProgrammingError: (208, b"Invalid object name 't'.DB-Lib error message 20018, severity 16:\nGeneral SQL Server error: Check messages from the SQL Server\n")
