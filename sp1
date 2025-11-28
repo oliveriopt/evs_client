@@ -39,7 +39,7 @@ BEGIN
     )
 
   SELECT
-    -- columnas originales
+    -- columnas originales (FK o PK)
     fk.database_name,
     fk.schema_name,
     fk.table_name,
@@ -65,7 +65,6 @@ BEGIN
     tabla_pk pk
   ON  fk.database_name = pk.database_name
   AND fk.schema_name   = pk.schema_name
-  AND fk.table_name    = pk.table_name
   AND fk.column_name   = pk.column_name;
 
 END;
