@@ -1,0 +1,71 @@
+CREATE OR REPLACE PROCEDURE
+  `rxo-dataeng-datalake-np.dataops_admin.sp_build_lookup_fk_pk_enriched`()
+BEGIN
+
+  -- Creamos / reemplazamos la tabla final enriquecida
+  CREATE OR REPLACE TABLE
+    `rxo-dataeng-datalake-np.dataops_admin.lookuptable_fk_pk_enriched` AS
+  WITH
+    -- Tabla completa (lo que llamas tabla_pk_fk)
+    tabla_pk_fk AS (
+      SELECT
+        database_name,
+        schema_name,
+        table_name,
+        column_name,
+        is_pk,
+        total_rows,
+        distinct_values,
+        load_ts
+      FROM
+        `rxo-dataeng-datalake-np.dataops_admin.lookuptable_fk_pk_analysis`
+    ),
+
+    -- Solo las filas donde is_pk = 1 (tabla_pk lógica, no física)
+    tabla_pk AS (
+      SELECT
+        database_name,
+        schema_name,
+        table_name,
+        column_name,
+        is_pk,
+        total_rows,
+        distinct_values,
+        load_ts
+      FROM
+        `rxo-dataeng-datalake-np.dataops_admin.lookuptable_fk_pk_analysis`
+      WHERE
+        is_pk = 1
+    )
+
+  SELECT
+    -- columnas originales
+    fk.database_name,
+    fk.schema_name,
+    fk.table_name,
+    fk.column_name,
+    fk.is_pk,
+    fk.total_rows,
+    fk.distinct_values,
+    fk.load_ts,
+
+    -- columnas provenientes de la fila PK, con sufijo _pk
+    pk.database_name   AS database_name_pk,
+    pk.schema_name     AS schema_name_pk,
+    pk.table_name      AS table_name_pk,
+    pk.column_name     AS column_name_pk,
+    pk.is_pk           AS is_pk_pk,
+    pk.total_rows      AS total_rows_pk,
+    pk.distinct_values AS distinct_values_pk,
+    pk.load_ts         AS load_ts_pk
+
+  FROM
+    tabla_pk_fk fk
+  LEFT JOIN
+    tabla_pk pk
+  ON  fk.database_name = pk.database_name
+  AND fk.schema_name   = pk.schema_name
+  AND fk.table_name    = pk.table_name
+  AND fk.column_name   = pk.column_name;
+
+END;
