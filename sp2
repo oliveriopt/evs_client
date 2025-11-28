@@ -1,0 +1,109 @@
+CREATE OR REPLACE PROCEDURE `rxo-dataeng-datalake-np.dataops_admin.sp_enrich_pk_scores`()
+BEGIN
+  --------------------------------------------------------------------
+  -- 1) Añadir columnas nuevas en la MISMA tabla (idempotente)
+  --------------------------------------------------------------------
+  ALTER TABLE `rxo-dataeng-datalake-np.dataops_admin.lookuptable_fk_pk`
+    ADD COLUMN IF NOT EXISTS pk_num_fk_columns INT64,
+    ADD COLUMN IF NOT EXISTS pk_size_class STRING,
+    ADD COLUMN IF NOT EXISTS pk_name_score INT64,
+    ADD COLUMN IF NOT EXISTS pk_avg_fk_ratio FLOAT64,
+    ADD COLUMN IF NOT EXISTS pk_lookup_score FLOAT64;
+
+  --------------------------------------------------------------------
+  -- 2) Agregar métricas a nivel de tabla PK
+  --------------------------------------------------------------------
+  CREATE TEMP TABLE pk_agg AS
+  SELECT
+    database_name_pk,
+    schema_name_pk,
+    table_name_pk,
+    column_name_pk,
+    MAX(total_rows_pk) AS total_rows_pk,
+    MAX(distinct_values_pk) AS distinct_values_pk,
+    COUNT(
+      DISTINCT CONCAT(database_name, '|', schema_name, '|', table_name, '|', column_name)
+    ) AS pk_num_fk_columns,
+    AVG(
+      SAFE_DIVIDE(distinct_values, NULLIF(distinct_values_pk, 0))
+    ) AS pk_avg_fk_ratio,
+    CASE
+      WHEN MAX(total_rows_pk) IS NULL THEN 'UNKNOWN'
+      WHEN MAX(total_rows_pk) < 10000 THEN 'SMALL'
+      WHEN MAX(total_rows_pk) < 1000000 THEN 'MEDIUM'
+      ELSE 'LARGE'
+    END AS pk_size_class,
+    IF(
+      REGEXP_CONTAINS(table_name_pk, r'(Type|Code|Status|Category|Class|Reason|Method|Terms)$')
+      OR REGEXP_CONTAINS(column_name_pk, r'(TypeId|CodeId|StatusId)$'),
+      1, 0
+    ) AS pk_name_score
+  FROM `rxo-dataeng-datalake-np.dataops_admin.lookuptable_fk_pk`
+  WHERE database_name_pk IS NOT NULL
+  GROUP BY
+    database_name_pk,
+    schema_name_pk,
+    table_name_pk,
+    column_name_pk;
+
+  --------------------------------------------------------------------
+  -- 3) Calcular scores intermedios
+  --------------------------------------------------------------------
+  CREATE TEMP TABLE pk_metrics AS
+  SELECT
+    database_name_pk,
+    schema_name_pk,
+    table_name_pk,
+    column_name_pk,
+    pk_num_fk_columns,
+    pk_size_class,
+    pk_name_score,
+    pk_avg_fk_ratio,
+    total_rows_pk,
+    -- componente tamaño
+    CASE
+      WHEN total_rows_pk IS NULL THEN 0.0
+      WHEN total_rows_pk < 10000 THEN 1.0
+      WHEN total_rows_pk < 100000 THEN 0.6
+      ELSE 0.0
+    END AS s_size,
+    -- componente nº de FKs (normalizado con log10)
+    LEAST(1.0, LOG10(1 + pk_num_fk_columns) / LOG10(10)) AS s_refs,
+    -- componente nombre (0 ó 1)
+    CAST(pk_name_score AS FLOAT64) AS s_name,
+    -- componente ratio de uso
+    LEAST(1.0, IFNULL(pk_avg_fk_ratio, 0.0)) AS s_ratio
+  FROM pk_agg;
+
+  --------------------------------------------------------------------
+  -- 4) Score final (sin cortar, solo dejamos el valor)
+  --------------------------------------------------------------------
+  CREATE TEMP TABLE pk_scored AS
+  SELECT
+    database_name_pk,
+    schema_name_pk,
+    table_name_pk,
+    column_name_pk,
+    pk_num_fk_columns,
+    pk_size_class,
+    pk_name_score,
+    pk_avg_fk_ratio,
+    0.4 * s_size + 0.3 * s_refs + 0.2 * s_name + 0.1 * s_ratio AS pk_lookup_score
+  FROM pk_metrics;
+
+  --------------------------------------------------------------------
+  -- 5) Actualizar la tabla original con las métricas
+  --------------------------------------------------------------------
+  UPDATE `rxo-dataeng-datalake-np.dataops_admin.lookuptable_fk_pk` t
+  SET
+    t.pk_num_fk_columns = m.pk_num_fk_columns,
+    t.pk_size_class     = m.pk_size_class,
+    t.pk_name_score     = m.pk_name_score,
+    t.pk_avg_fk_ratio   = m.pk_avg_fk_ratio,
+    t.pk_lookup_score   = m.pk_lookup_score
+  FROM pk_scored m
+  WHERE t.database_name_pk = m.database_name_pk
+    AND t.schema_name_pk   = m.schema_name_pk
+    AND t.table_name_pk    = m.table_name_pk
+    AND t.column_name_pk   = m.column_name_pk;
+END;
