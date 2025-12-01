@@ -65,7 +65,6 @@ def extract_and_process_metadata(**context):
     WHERE
         source_type = '{source_type_filter}'
         AND table_type = '{table_type_filter}'
-        AND enabled IS TRUE
     """
 
     print(f"Executing BigQuery SQL Query:\n{sql_query}")
