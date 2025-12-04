@@ -1,40 +1,5 @@
+I completed the full lookup-table validation pipeline. The DAG now detects lookup candidates, verifies whether their PKs exist in lookup_table_relationships, writes the enriched results into BigQuery, and emits structured log events (LOOKUP_CANDIDATES_MISSING_DATA) whenever a mapping is missing.
 
-Task failed with exception
-Traceback (most recent call last):
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/models/taskinstance.py", line 768, in _execute_task
-    result = _execute_callable(context=context, **execute_callable_kwargs)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/models/taskinstance.py", line 734, in _execute_callable
-    return ExecutionCallableRunner(
-           ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/utils/operator_helpers.py", line 252, in run
-    return self.func(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/models/baseoperator.py", line 415, in wrapper
-    return func(self, *args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/operators/python.py", line 238, in execute
-    return_value = self.execute_callable()
-                   ^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/operators/python.py", line 256, in execute_callable
-    return runner.run(*self.op_args, **self.op_kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/utils/operator_helpers.py", line 252, in run
-    return self.func(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/airflow/gcs/dags/09_op_dag_lookuptable_v8.py", line 756, in check_lookup_candidates_and_notify
-    send_email(to="oliver.pozo@rxo.com", subject=subject, html_content=f"<pre>{body}</pre>")
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/utils/email.py", line 80, in send_email
-    return backend(
-           ^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/providers/sendgrid/utils/emailer.py", line 123, in send_email
-    _post_sendgrid_mail(mail.get(), conn_id)
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/providers/sendgrid/utils/emailer.py", line 127, in _post_sendgrid_mail
-    conn = BaseHook.get_connection(conn_id)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/hooks/base.py", line 83, in get_connection
-    conn = Connection.get_connection_from_secrets(conn_id)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/python3.11/lib/python3.11/site-packages/airflow/models/connection.py", line 537, in get_connection_from_secrets
-    raise AirflowNotFoundException(f"The conn_id `{conn_id}` isn't defined")
-airflow.exceptions.AirflowNotFoundException: The conn_id `smtp_default` isn't defined
+A log-based alert policy is now active in Cloud Monitoring, so any missing or inconsistent lookup relations trigger an automated alert.
+
+Next step: I want to unify lookup-table detection with the population of the lookup_table_relationships table, so both identification and relationship mapping become a single consistent process.
